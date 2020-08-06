@@ -1,0 +1,13 @@
+Thanks to:
+
+Dave Herman for maintaining the PLT Planet distribution.
+
+Felix S Klock and the whole "Larceny Gang" (including ringleader Will Clinger) for porting Larceny to Sassy, numerous bug-fixes, enhancements, and really "stress-testing" this code base.
+
+Alex Shinn for numerous suggestions, lots of macros, and the whole "units" system.
+
+Peter Keller for his ongoing support and contributions.
+
+Felix Winkelmann for eggifying Sassy.
+
+

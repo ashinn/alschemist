@@ -1,0 +1,56 @@
+TODO - RELEASE 0.2.1
+====================
+
+* Flesh out docs for reloc, especially rel - re convo's with Felix Aug
+  4-6. (no values in rel, and using rel as immediate operand, and more
+  examples about how they work
+
+* Elucidate usages of (reloc ...) in docs (re: recent problems Felix
+  was having).
+
+* Fix docs for behavior of signed/unsigned bytes as operands (Felix's changes)
+
+* Add documentation for Alex's "units" (patch-5)
+
+* Add documentation for the items listed in the patch-3 changelog. (only sassy-current left to do)
+
+* Add documentation for patch-4: let-macro
+
+* Add documentation about using ld on 64-bit, but in 32-bit mode:
+
+Date: Mon, 3 Apr 2006 11:15:16 +0900
+From: "Alex Shinn" <alexshinn@gmail.com>
+To: "Jonathan Kraut" <jak76@columbia.edu>
+Subject: Re: sassy-0.2.1 patch-4
+
+On 4/3/06, Jonathan Kraut <krautj@earthlink.net> wrote:
+>
+> I have a feeling you may be right. I've never encountered such a problem.
+
+Ah, I finally figured out the problem!  The linker had been giving me the
+following warning:
+
+ld: warning: i386 architecture of input file `pusha.o' is incompatible
+with i386:x86-64 output
+
+but I've written some fairly complex programs without any problems, so
+I figured it didn't mean anything.  It turns out that this *is* a problem, =
+and
+for a few opcodes (like PUSHA and memory movements to/from EAX),
+you need to pass the -melf_i386 to ld.  Why just these and not other
+opcodes, I have no idea.
+
+--
+Alex
+
+* PATCH 5 DOCS:
+
+  * docs and tests for new special forms; lazy-macro and let-lazy-macro
+  
+  * docs for using include inside the macro expander
+
+  * docs for new control macros from Alex
+
+  * docs and tests for Alex's "units" subsystem.
+
+* Add copyright for Alex's stuff

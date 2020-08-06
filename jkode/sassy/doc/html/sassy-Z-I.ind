@@ -1,0 +1,241 @@
+\begin{theindex}
+
+  \item !, \expandhtmlindex{40}
+  \item \scm{$eip}, \expandhtmlindex{224}
+  \item \scm{$lose}, \expandhtmlindex{222}
+  \item \scm{$win}, \expandhtmlindex{220}
+  \item \scm{align}, \expandhtmlindex{58}
+  \item \scm{alt}, \expandhtmlindex{196}
+  \item \scm{begin}, \expandhtmlindex{106}, \expandhtmlindex{206}, 
+		\expandhtmlindex{218}
+  \item \scm{data}, \expandhtmlindex{84}
+  \item \scm{entry}, \expandhtmlindex{96}
+  \item \scm{esc}, \expandhtmlindex{226}
+  \item \scm{export}, \expandhtmlindex{94}
+  \item \scm{heap}, \expandhtmlindex{74}
+  \item \scm{if}, \expandhtmlindex{194}
+  \item \scm{import}, \expandhtmlindex{92}
+  \item \scm{include}, \expandhtmlindex{90}
+  \item \scm{inv}, \expandhtmlindex{192}
+  \item \scm{iter}, \expandhtmlindex{200}
+  \item \scm{label}, \expandhtmlindex{48}
+  \item \scm{leap}, \expandhtmlindex{230}
+  \item \scm{locals}, \expandhtmlindex{52}
+  \item \scm{macro}, \expandhtmlindex{100}
+  \item \scm{mark}, \expandhtmlindex{228}
+  \item \scm{org}, \expandhtmlindex{98}
+  \item \scm{seq}, \expandhtmlindex{190}, \expandhtmlindex{216}
+  \item \scm{text}, \expandhtmlindex{88}
+  \item \scm{times}, \expandhtmlindex{198}
+  \item \scm{until}, \expandhtmlindex{208}
+  \item \scm{while}, \expandhtmlindex{202}
+  \item \scm{with-lose}, \expandhtmlindex{212}
+  \item \scm{with-win-lose}, \expandhtmlindex{214}
+  \item \scm{with-win}, \expandhtmlindex{210}
+  \item \var{push-stacks}, \expandhtmlindex{314}
+  \item \var{sassy-output}, \expandhtmlindex{248}
+  \item \var{sassy-reloc}, \expandhtmlindex{284}
+  \item \var{sassy-symbol}, \expandhtmlindex{270}
+
+  \indexspace
+
+  \item A Note on Branch Optimization, \expandhtmlindex{232}
+  \item Additional procedures for \var{sassy-output}, 
+		\expandhtmlindex{302}
+  \item Addressing, \expandhtmlindex{114}
+  \item asciiz, \expandhtmlindex{86}
+  \item Assertions, \expandhtmlindex{184}
+
+  \indexspace
+
+  \item Basic Syntax, \expandhtmlindex{38}
+  \item brnt, \expandhtmlindex{182}
+  \item brt, \expandhtmlindex{180}
+  \item byte, \expandhtmlindex{148}
+  \item bytes, \expandhtmlindex{66}, \expandhtmlindex{76}, 
+		\expandhtmlindex{234}
+
+  \indexspace
+
+  \item calls, \expandhtmlindex{164}
+  \item Caveats, \expandhtmlindex{16}
+  \item Chicken, \expandhtmlindex{10}
+  \item Comparisons, \expandhtmlindex{364}
+  \item Control Primitives, \expandhtmlindex{186}
+  \item cs, \expandhtmlindex{122}
+  \item cs:, \expandhtmlindex{134}
+  \item Custom Relocations, \expandhtmlindex{242}
+
+  \indexspace
+
+  \item Defining Labels, \expandhtmlindex{50}
+  \item delete-file, \expandhtmlindex{26}
+  \item Descriptions of directives, \expandhtmlindex{64}
+  \item Directives, \expandhtmlindex{44}
+  \item dont-expand, \expandhtmlindex{36}
+  \item dqword, \expandhtmlindex{156}, \expandhtmlindex{160}
+  \item ds, \expandhtmlindex{124}
+  \item ds:, \expandhtmlindex{136}
+  \item dword, \expandhtmlindex{152}
+  \item dwords, \expandhtmlindex{70}, \expandhtmlindex{80}, 
+		\expandhtmlindex{238}
+
+  \indexspace
+
+  \item ELF helpers, \expandhtmlindex{368}
+  \item ELF Output, \expandhtmlindex{356}
+  \item Emacs, \expandhtmlindex{18}
+  \item es, \expandhtmlindex{128}
+  \item es:, \expandhtmlindex{140}
+  \item Escaping to Scheme, \expandhtmlindex{42}
+  \item Explicit Continuation Versions, \expandhtmlindex{370}
+
+  \indexspace
+
+  \item far, \expandhtmlindex{172}
+  \item far calls, \expandhtmlindex{176}
+  \item far jumps, \expandhtmlindex{174}
+  \item file-exists?, \expandhtmlindex{24}
+  \item Flat Binaries, \expandhtmlindex{352}
+  \item fs, \expandhtmlindex{130}
+  \item fs:, \expandhtmlindex{142}
+
+  \indexspace
+
+  \item gs, \expandhtmlindex{132}
+  \item gs:, \expandhtmlindex{144}
+
+  \indexspace
+
+  \item Immediates, \expandhtmlindex{112}
+  \item index, \expandhtmlindex{116}
+  \item Installation, \expandhtmlindex{4}
+  \item Installing, \expandhtmlindex{8}
+  \item Instructions, \expandhtmlindex{110}
+
+  \indexspace
+
+  \item jumps, \expandhtmlindex{162}
+  \item Jumps and Calls, \expandhtmlindex{166}
+
+  \indexspace
+
+  \item Label Definitions and Lexical Scoping, \expandhtmlindex{46}
+  \item Lexical Scoping, \expandhtmlindex{56}
+  \item locals, declaring, \expandhtmlindex{54}
+
+  \indexspace
+
+  \item Macro Expansions, \expandhtmlindex{360}
+  \item make-pushdown-stack, \expandhtmlindex{316}
+  \item make-pushup-stack, \expandhtmlindex{318}
+  \item More Control Primitives, \expandhtmlindex{366}
+
+  \indexspace
+
+  \item near, \expandhtmlindex{170}
+
+  \indexspace
+
+  \item Operand Sizes, \expandhtmlindex{146}
+  \item options, \expandhtmlindex{34}
+  \item Other Schemes, \expandhtmlindex{14}
+  \item Output, \expandhtmlindex{244}
+  \item Output Modules, \expandhtmlindex{350}
+  \item Overview, \expandhtmlindex{2}
+
+  \indexspace
+
+  \item Porting Sassy, \expandhtmlindex{22}
+  \item Prefixes, \expandhtmlindex{178}
+  \item push-stack-align, \expandhtmlindex{340}
+  \item push-stack-append, \expandhtmlindex{338}
+  \item push-stack-direction, \expandhtmlindex{334}
+  \item push-stack-empty?, \expandhtmlindex{320}
+  \item push-stack-items, \expandhtmlindex{326}
+  \item push-stack-patch, \expandhtmlindex{328}
+  \item push-stack-pointer, \expandhtmlindex{324}
+  \item push-stack-push, \expandhtmlindex{322}
+  \item push-stack-push->patcher, \expandhtmlindex{330}
+  \item push-stack-save, \expandhtmlindex{332}
+  \item push-stack-size, \expandhtmlindex{336}
+
+  \indexspace
+
+  \item qword, \expandhtmlindex{154}
+  \item qwords, \expandhtmlindex{72}, \expandhtmlindex{82}
+
+  \indexspace
+
+  \item Raw text data, \expandhtmlindex{240}
+  \item Record-types, \expandhtmlindex{246}
+
+  \indexspace
+
+  \item sassy, \expandhtmlindex{30}, \expandhtmlindex{32}
+  \item Sassy and GNU Emacs, \expandhtmlindex{20}
+  \item Sassy Extensions, \expandhtmlindex{204}
+  \item sassy-data-align, \expandhtmlindex{266}
+  \item sassy-data-list, \expandhtmlindex{304}
+  \item sassy-data-size, \expandhtmlindex{310}
+  \item sassy-data-stack, \expandhtmlindex{256}
+  \item sassy-entry-point, \expandhtmlindex{254}
+  \item sassy-expand, \expandhtmlindex{102}, \expandhtmlindex{104}
+  \item sassy-heap-align, \expandhtmlindex{264}
+  \item sassy-heap-size, \expandhtmlindex{260}
+  \item sassy-hexdump, \expandhtmlindex{344}
+  \item sassy-make-bin, \expandhtmlindex{354}
+  \item sassy-make-elf, \expandhtmlindex{358}
+  \item sassy-print-relocs, \expandhtmlindex{348}
+  \item sassy-print-symbols, \expandhtmlindex{346}
+  \item sassy-reloc-list, \expandhtmlindex{252}
+  \item sassy-reloc-name, \expandhtmlindex{286}
+  \item sassy-reloc-offset, \expandhtmlindex{292}
+  \item sassy-reloc-patcher, \expandhtmlindex{296}
+  \item sassy-reloc-section, \expandhtmlindex{288}
+  \item sassy-reloc-target-section, \expandhtmlindex{290}
+  \item sassy-reloc-type, \expandhtmlindex{294}
+  \item sassy-reloc-value, \expandhtmlindex{298}
+  \item sassy-reloc-width, \expandhtmlindex{300}
+  \item sassy-symbol-exists?, \expandhtmlindex{312}
+  \item sassy-symbol-name, \expandhtmlindex{272}
+  \item sassy-symbol-offset, \expandhtmlindex{278}
+  \item sassy-symbol-scope, \expandhtmlindex{274}
+  \item sassy-symbol-section, \expandhtmlindex{276}
+  \item sassy-symbol-size, \expandhtmlindex{280}
+  \item sassy-symbol-table, \expandhtmlindex{250}
+  \item sassy-symbol-unres, \expandhtmlindex{282}
+  \item sassy-text-align, \expandhtmlindex{268}
+  \item sassy-text-list, \expandhtmlindex{306}
+  \item sassy-text-org, \expandhtmlindex{262}
+  \item sassy-text-size, \expandhtmlindex{308}
+  \item sassy-text-stack, \expandhtmlindex{258}
+  \item scale, \expandhtmlindex{118}
+  \item Scheme48, \expandhtmlindex{12}
+  \item Sections, \expandhtmlindex{62}
+  \item segment override prefixes, \expandhtmlindex{120}
+  \item short, \expandhtmlindex{168}
+  \item ss, \expandhtmlindex{126}
+  \item ss:, \expandhtmlindex{138}
+  \item Supplied macros, \expandhtmlindex{362}
+  \item Supported Schemes, \expandhtmlindex{6}
+
+  \indexspace
+
+  \item The COMFY core, \expandhtmlindex{188}
+  \item The Text Section, \expandhtmlindex{108}
+  \item The {\scm{align}} special form, \expandhtmlindex{60}
+  \item tword, \expandhtmlindex{158}
+
+  \indexspace
+
+  \item Usage, \expandhtmlindex{28}
+  \item Utilities, \expandhtmlindex{342}
+
+  \indexspace
+
+  \item word, \expandhtmlindex{150}
+  \item words, \expandhtmlindex{68}, \expandhtmlindex{78}, 
+		\expandhtmlindex{236}
+
+\end{theindex}

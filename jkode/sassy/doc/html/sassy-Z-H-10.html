@@ -1,0 +1,178 @@
+<!doctype html public "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<!--
+
+Generated from sassy.tex by tex2page, v 20070609
+(running on MzScheme 4.0.1, unix), 
+(c) Dorai Sitaram, 
+http://www.ccs.neu.edu/~dorai/tex2page/tex2page-doc.html
+
+-->
+<head>
+<title>
+Sassy - 0.2.1
+</title>
+<link rel="stylesheet" type="text/css" href="sassy-Z-S.css" title=default>
+<meta name="robots" content="index,follow">
+</head>
+<body>
+<div id=slidecontent>
+<div align=right class=navigation>[Go to <span><a href="sassy.html">first</a>, <a href="sassy-Z-H-9.html">previous</a></span><span>, <a href="sassy-Z-H-11.html">next</a></span> page<span>; &nbsp;&nbsp;</span><span><a href="sassy-Z-H-1.html#node_toc_start">contents</a></span><span><span>; &nbsp;&nbsp;</span><a href="sassy-Z-H-13.html#node_index_start">index</a></span>]</div>
+<p></p>
+<a name="node_chap_A"></a>
+<h1 class=chapter>
+<div class=chapterheading><a href="sassy-Z-H-1.html#node_toc_node_chap_A">Appendix A</a></div><br>
+<a href="sassy-Z-H-1.html#node_toc_node_chap_A">Macro Expansions</a></h1>
+<p>
+<a name="node_idx_360"></a></p>
+<p>
+<a name="node_tag_Temp_22"></a>
+
+</p>
+<a name="node_sec_A.0.1"></a>
+<h3 class=section><a href="sassy-Z-H-1.html#node_toc_node_sec_A.0.1">A.0.1&nbsp;&nbsp;Supplied macros</a></h3>
+<p>
+<a name="node_idx_362"></a></p>
+<p>
+The following included forms are all macros. If you supply the <a href="sassy-Z-H-4.html#node_tag_Temp_3"><code class=verbatim>'dont-expand</code></a> option to <code class=verbatim>sassy</code>, these forms will not be available.
+</p>
+<pre class=scheme><span class=variable>&lt;</span>
+<span class=variable>&lt;=</span>
+<span class=variable>&gt;</span>
+<span class=variable>&gt;=</span>
+<span class=variable>=</span>
+<span class=variable>!=</span>
+<span class=variable>zero?</span>
+<span class=variable>asciiz</span>
+<span class=builtin>alt</span>
+<span class=builtin>times</span>
+<span class=builtin>until</span>
+<span class=variable>cs:</span>
+<span class=variable>ds:</span>
+<span class=variable>ss:</span>
+<span class=variable>es:</span>
+<span class=variable>fs:</span>
+<span class=variable>gs:</span>
+<span class=variable>_global_offset_table_</span>
+<span class=variable>get-got</span>
+<span class=variable>got-offset</span>
+<span class=variable>got</span>
+<span class=variable>plt</span>
+<span class=variable>sym</span>
+<span class=variable>even?</span>
+<span class=variable>odd?</span>
+<span class=variable>positive?</span>
+<span class=variable>negative?</span>
+<span class=keyword>when</span>
+<span class=builtin>unless</span>
+<span class=variable>if3</span>
+<span class=keyword>cond</span>
+<span class=variable>load</span>
+<span class=variable>link-expand</span>
+<span class=variable>link</span>
+<span class=variable>dynamic-link</span>
+<span class=variable>auto-link</span>
+</pre><p></p>
+<p>
+
+</p>
+<a name="node_sec_A.0.2"></a>
+<h3 class=section><a href="sassy-Z-H-1.html#node_toc_node_sec_A.0.2">A.0.2&nbsp;&nbsp;Comparisons</a></h3>
+<p>
+<a name="node_idx_364"></a></p>
+<p>
+</p>
+<pre class=scheme>(<span class=variable>&lt;</span>  <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>l!</span>)
+(<span class=variable>&lt;=</span> <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>le!</span>)
+(<span class=variable>&gt;</span>  <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>g!</span>)
+(<span class=variable>&gt;=</span> <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>ge!</span>)
+(<span class=variable>=</span>  <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>e!</span>)
+(<span class=variable>!=</span> <span class=variable>a</span> <span class=variable>b</span>)  <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>cmp</span> <span class=variable>a</span> <span class=variable>b</span>) <span class=builtin>ne!</span>)
+(<span class=variable>zero?</span> <span class=variable>a</span>) <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>test</span> <span class=variable>a</span> <span class=variable>a</span>) <span class=builtin>z!</span>)
+</pre><p></p>
+<p>
+
+</p>
+<a name="node_sec_A.0.3"></a>
+<h3 class=section><a href="sassy-Z-H-1.html#node_toc_node_sec_A.0.3">A.0.3&nbsp;&nbsp;More Control Primitives</a></h3>
+<p>
+<a name="node_idx_366"></a></p>
+<p>
+Though these are described in <a href="sassy-Z-H-6.html#node_tag_Temp_11">The Text Section</a> as control &#8220;primitives,&#8221; they are actually macros.</p>
+<p>
+</p>
+<pre class=scheme>(<span class=builtin>alt</span> <span class=variable>a</span> <span class=variable>b</span> ...) <span class=variable>=&gt;</span> (<span class=builtin>inv</span> (<span class=builtin>seq</span> (<span class=builtin>inv</span> <span class=variable>a</span>)
+                           (<span class=builtin>inv</span> <span class=variable>b</span>)
+                           ...))
+
+(<span class=builtin>times</span> <span class=variable>n</span> <span class=variable>e</span>)   <span class=variable>=&gt;</span> (<span class=keyword>begin</span> <span class=variable>e</span> <span class=variable>e</span> ...) <span class=comment>; There will be n e's</span>
+
+(<span class=builtin>until</span> <span class=variable>test</span> <span class=variable>body</span>) <span class=variable>=&gt;</span> (<span class=builtin>while</span> (<span class=builtin>inv</span> <span class=variable>test</span>) <span class=variable>body</span>)
+
+</pre><p></p>
+<p>
+
+</p>
+<a name="node_sec_A.0.4"></a>
+<h3 class=section><a href="sassy-Z-H-1.html#node_toc_node_sec_A.0.4">A.0.4&nbsp;&nbsp;ELF helpers</a></h3>
+<p>
+<a name="node_idx_368"></a></p>
+<p>
+</p>
+<pre class=scheme><span class=variable>_global_offset_table</span> <span class=variable>=&gt;</span> <span class=variable>_GLOBAL_OFFSET_TABLE_</span> <span class=comment>; an uppercase symbol</span>
+
+<span class=variable>get-got</span> <span class=variable>=&gt;</span> (<span class=builtin>seq</span> (<span class=variable>call</span> <span class=keyword>$eip</span>)
+                (<span class=variable>pop</span> <span class=variable>ebx</span>)
+                (<span class=variable>add</span> <span class=variable>ebx</span> (<span class=keyword>reloc</span> <span class=variable>gotpc</span> <span class=variable>the-got</span> <span class=selfeval>3</span>))
+
+(<span class=variable>got-offset</span> <span class=variable>symbol</span> <span class=variable>values</span> ...) <span class=variable>=&gt;</span> (<span class=keyword>reloc</span> <span class=variable>gotoff</span> <span class=variable>symbol</span> (<span class=keyword>!</span> (<span class=variable>+</span> <span class=selfeval>0</span> <span class=variable>values</span> ...)))
+(<span class=variable>got</span> <span class=variable>symbol</span>) <span class=variable>=&gt;</span> (<span class=keyword>reloc</span> <span class=variable>got32</span> <span class=variable>symbol</span>)
+(<span class=variable>plt</span> <span class=variable>symbol</span>) <span class=variable>=&gt;</span> (<span class=keyword>reloc</span> <span class=variable>plt32</span> <span class=variable>symbol</span>)
+(<span class=variable>sym</span> <span class=variable>symbol</span>) <span class=variable>=&gt;</span> (<span class=keyword>reloc</span> <span class=variable>sym32</span> <span class=variable>symbol</span>)
+</pre><p></p>
+<p>
+<a name="node_tag_Temp_23"></a>
+
+</p>
+<a name="node_sec_A.0.5"></a>
+<h3 class=section><a href="sassy-Z-H-1.html#node_toc_node_sec_A.0.5">A.0.5&nbsp;&nbsp;Explicit Continuation Versions</a></h3>
+<p>
+<a name="node_idx_370"></a></p>
+<p>
+The following macros use only explicit continuations to express the
+semantics of the primitives <code class=scheme><span class=builtin>seq</span></code>, <code class=scheme><span class=builtin>if</span></code>, <code class=scheme><span class=builtin>inv</span></code>, and
+<code class=scheme><span class=keyword>begin</span></code>. They are included in the documentation for elucidation,
+but are not part of Sassy&#8217;s core set of macros:</p>
+<p>
+</p>
+<pre class=scheme>(<span class=keyword>macro</span> <span class=variable>seq-k</span> (<span class=keyword>lambda</span> <span class=variable>tests</span>
+	       (<span class=keyword>cond</span> ((<span class=variable>null?</span> <span class=variable>tests</span>) <span class=keyword>'</span><span class=keyword>$win</span>)
+		     ((<span class=variable>null?</span> (<span class=variable>cdr</span> <span class=variable>tests</span>)) (<span class=variable>car</span> <span class=variable>tests</span>))
+		     (<span class=builtin>else</span> <span class=keyword>`</span>(<span class=builtin>with-win</span> (<span class=variable>seq-k</span> <span class=keyword>,@</span>(<span class=variable>cdr</span> <span class=variable>tests</span>))
+			      <span class=keyword>,</span>(<span class=variable>car</span> <span class=variable>tests</span>))))))
+
+(<span class=keyword>macro</span> <span class=variable>inv-k</span> (<span class=keyword>lambda</span> (<span class=variable>itm</span>)
+	       <span class=keyword>`</span>(<span class=builtin>with-win-lose</span> <span class=keyword>$lose</span> <span class=keyword>$win</span>
+		  <span class=keyword>,</span><span class=variable>itm</span>)))
+
+(<span class=keyword>macro</span> <span class=variable>if-k</span> (<span class=keyword>lambda</span> (<span class=variable>test</span> <span class=variable>conseq</span> <span class=variable>altern</span>)
+	      <span class=keyword>`</span>(<span class=builtin>with-win-lose</span> <span class=keyword>,</span><span class=variable>conseq</span> <span class=keyword>,</span><span class=variable>altern</span>
+		 <span class=keyword>,</span><span class=variable>test</span>)))
+
+(<span class=keyword>macro</span> <span class=variable>begin-k</span> (<span class=keyword>lambda</span> <span class=variable>body-tail</span>
+		 (<span class=builtin>if</span> (<span class=variable>null?</span> (<span class=variable>cdr</span> <span class=variable>body-tail</span>))
+		     (<span class=variable>car</span> <span class=variable>body-tail</span>)
+		     <span class=keyword>`</span>(<span class=builtin>with-win</span> (<span class=variable>begin-k</span> <span class=keyword>,@</span>(<span class=variable>cdr</span> <span class=variable>body-tail</span>))
+			(<span class=builtin>with-lose</span> <span class=keyword>$win</span>
+			  <span class=keyword>,</span>(<span class=variable>car</span> <span class=variable>body-tail</span>))))))
+</pre><p></p>
+<p>
+</p>
+<div class=smallskip></div>
+<p style="margin-top: 0pt; margin-bottom: 0pt">
+<div align=right class=navigation>[Go to <span><a href="sassy.html">first</a>, <a href="sassy-Z-H-9.html">previous</a></span><span>, <a href="sassy-Z-H-11.html">next</a></span> page<span>; &nbsp;&nbsp;</span><span><a href="sassy-Z-H-1.html#node_toc_start">contents</a></span><span><span>; &nbsp;&nbsp;</span><a href="sassy-Z-H-13.html#node_index_start">index</a></span>]</div>
+</p>
+<p></p>
+</div>
+</body>
+</html>

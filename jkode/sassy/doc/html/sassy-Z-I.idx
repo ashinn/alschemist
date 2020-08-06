@@ -1,0 +1,185 @@
+\indexentry{Overview|expandhtmlindex}{2}
+\indexentry{Installation|expandhtmlindex}{4}
+\indexentry{Supported Schemes|expandhtmlindex}{6}
+\indexentry{Installing|expandhtmlindex}{8}
+\indexentry{Chicken|expandhtmlindex}{10}
+\indexentry{Scheme48|expandhtmlindex}{12}
+\indexentry{Other Schemes|expandhtmlindex}{14}
+\indexentry{Caveats|expandhtmlindex}{16}
+\indexentry{Emacs|expandhtmlindex}{18}
+\indexentry{Sassy and GNU Emacs|expandhtmlindex}{20}
+\indexentry{Porting Sassy|expandhtmlindex}{22}
+\indexentry{file-exists?|expandhtmlindex}{24}
+\indexentry{delete-file|expandhtmlindex}{26}
+\indexentry{Usage|expandhtmlindex}{28}
+\indexentry{sassy|expandhtmlindex}{30}
+\indexentry{sassy|expandhtmlindex}{32}
+\indexentry{options|expandhtmlindex}{34}
+\indexentry{dont-expand|expandhtmlindex}{36}
+\indexentry{Basic Syntax|expandhtmlindex}{38}
+\indexentry{"!@"!|expandhtmlindex}{40}
+\indexentry{Escaping to Scheme|expandhtmlindex}{42}
+\indexentry{Directives|expandhtmlindex}{44}
+\indexentry{Label Definitions and Lexical Scoping|expandhtmlindex}{46}
+\indexentry{\scm{label}|expandhtmlindex}{48}
+\indexentry{Defining Labels|expandhtmlindex}{50}
+\indexentry{\scm{locals}|expandhtmlindex}{52}
+\indexentry{locals, declaring|expandhtmlindex}{54}
+\indexentry{Lexical Scoping|expandhtmlindex}{56}
+\indexentry{\scm{align}|expandhtmlindex}{58}
+\indexentry{The {\scm{align}} special form|expandhtmlindex}{60}
+\indexentry{Sections|expandhtmlindex}{62}
+\indexentry{Descriptions of directives|expandhtmlindex}{64}
+\indexentry{bytes|expandhtmlindex}{66}
+\indexentry{words|expandhtmlindex}{68}
+\indexentry{dwords|expandhtmlindex}{70}
+\indexentry{qwords|expandhtmlindex}{72}
+\indexentry{\scm{heap}|expandhtmlindex}{74}
+\indexentry{bytes|expandhtmlindex}{76}
+\indexentry{words|expandhtmlindex}{78}
+\indexentry{dwords|expandhtmlindex}{80}
+\indexentry{qwords|expandhtmlindex}{82}
+\indexentry{\scm{data}|expandhtmlindex}{84}
+\indexentry{asciiz|expandhtmlindex}{86}
+\indexentry{\scm{text}|expandhtmlindex}{88}
+\indexentry{\scm{include}|expandhtmlindex}{90}
+\indexentry{\scm{import}|expandhtmlindex}{92}
+\indexentry{\scm{export}|expandhtmlindex}{94}
+\indexentry{\scm{entry}|expandhtmlindex}{96}
+\indexentry{\scm{org}|expandhtmlindex}{98}
+\indexentry{\scm{macro}|expandhtmlindex}{100}
+\indexentry{sassy-expand|expandhtmlindex}{102}
+\indexentry{sassy-expand|expandhtmlindex}{104}
+\indexentry{\scm{begin}|expandhtmlindex}{106}
+\indexentry{The Text Section|expandhtmlindex}{108}
+\indexentry{Instructions|expandhtmlindex}{110}
+\indexentry{Immediates|expandhtmlindex}{112}
+\indexentry{Addressing|expandhtmlindex}{114}
+\indexentry{index|expandhtmlindex}{116}
+\indexentry{scale|expandhtmlindex}{118}
+\indexentry{segment override prefixes|expandhtmlindex}{120}
+\indexentry{cs|expandhtmlindex}{122}
+\indexentry{ds|expandhtmlindex}{124}
+\indexentry{ss|expandhtmlindex}{126}
+\indexentry{es|expandhtmlindex}{128}
+\indexentry{fs|expandhtmlindex}{130}
+\indexentry{gs|expandhtmlindex}{132}
+\indexentry{cs:|expandhtmlindex}{134}
+\indexentry{ds:|expandhtmlindex}{136}
+\indexentry{ss:|expandhtmlindex}{138}
+\indexentry{es:|expandhtmlindex}{140}
+\indexentry{fs:|expandhtmlindex}{142}
+\indexentry{gs:|expandhtmlindex}{144}
+\indexentry{Operand Sizes|expandhtmlindex}{146}
+\indexentry{byte|expandhtmlindex}{148}
+\indexentry{word|expandhtmlindex}{150}
+\indexentry{dword|expandhtmlindex}{152}
+\indexentry{qword|expandhtmlindex}{154}
+\indexentry{dqword|expandhtmlindex}{156}
+\indexentry{tword|expandhtmlindex}{158}
+\indexentry{dqword|expandhtmlindex}{160}
+\indexentry{jumps|expandhtmlindex}{162}
+\indexentry{calls|expandhtmlindex}{164}
+\indexentry{Jumps and Calls|expandhtmlindex}{166}
+\indexentry{short|expandhtmlindex}{168}
+\indexentry{near|expandhtmlindex}{170}
+\indexentry{far|expandhtmlindex}{172}
+\indexentry{far jumps|expandhtmlindex}{174}
+\indexentry{far calls|expandhtmlindex}{176}
+\indexentry{Prefixes|expandhtmlindex}{178}
+\indexentry{brt|expandhtmlindex}{180}
+\indexentry{brnt|expandhtmlindex}{182}
+\indexentry{Assertions|expandhtmlindex}{184}
+\indexentry{Control Primitives|expandhtmlindex}{186}
+\indexentry{The COMFY core|expandhtmlindex}{188}
+\indexentry{\scm{seq}|expandhtmlindex}{190}
+\indexentry{\scm{inv}|expandhtmlindex}{192}
+\indexentry{\scm{if}|expandhtmlindex}{194}
+\indexentry{\scm{alt}|expandhtmlindex}{196}
+\indexentry{\scm{times}|expandhtmlindex}{198}
+\indexentry{\scm{iter}|expandhtmlindex}{200}
+\indexentry{\scm{while}|expandhtmlindex}{202}
+\indexentry{Sassy Extensions|expandhtmlindex}{204}
+\indexentry{\scm{begin}|expandhtmlindex}{206}
+\indexentry{\scm{until}|expandhtmlindex}{208}
+\indexentry{\scm{with-win}|expandhtmlindex}{210}
+\indexentry{\scm{with-lose}|expandhtmlindex}{212}
+\indexentry{\scm{with-win-lose}|expandhtmlindex}{214}
+\indexentry{\scm{seq}|expandhtmlindex}{216}
+\indexentry{\scm{begin}|expandhtmlindex}{218}
+\indexentry{\scm{$win}|expandhtmlindex}{220}
+\indexentry{\scm{$lose}|expandhtmlindex}{222}
+\indexentry{\scm{$eip}|expandhtmlindex}{224}
+\indexentry{\scm{esc}|expandhtmlindex}{226}
+\indexentry{\scm{mark}|expandhtmlindex}{228}
+\indexentry{\scm{leap}|expandhtmlindex}{230}
+\indexentry{A Note on Branch Optimization|expandhtmlindex}{232}
+\indexentry{bytes|expandhtmlindex}{234}
+\indexentry{words|expandhtmlindex}{236}
+\indexentry{dwords|expandhtmlindex}{238}
+\indexentry{Raw text data|expandhtmlindex}{240}
+\indexentry{Custom Relocations|expandhtmlindex}{242}
+\indexentry{Output|expandhtmlindex}{244}
+\indexentry{Record-types|expandhtmlindex}{246}
+\indexentry{\var{sassy-output}|expandhtmlindex}{248}
+\indexentry{sassy-symbol-table|expandhtmlindex}{250}
+\indexentry{sassy-reloc-list|expandhtmlindex}{252}
+\indexentry{sassy-entry-point|expandhtmlindex}{254}
+\indexentry{sassy-data-stack|expandhtmlindex}{256}
+\indexentry{sassy-text-stack|expandhtmlindex}{258}
+\indexentry{sassy-heap-size|expandhtmlindex}{260}
+\indexentry{sassy-text-org|expandhtmlindex}{262}
+\indexentry{sassy-heap-align|expandhtmlindex}{264}
+\indexentry{sassy-data-align|expandhtmlindex}{266}
+\indexentry{sassy-text-align|expandhtmlindex}{268}
+\indexentry{\var{sassy-symbol}|expandhtmlindex}{270}
+\indexentry{sassy-symbol-name|expandhtmlindex}{272}
+\indexentry{sassy-symbol-scope|expandhtmlindex}{274}
+\indexentry{sassy-symbol-section|expandhtmlindex}{276}
+\indexentry{sassy-symbol-offset|expandhtmlindex}{278}
+\indexentry{sassy-symbol-size|expandhtmlindex}{280}
+\indexentry{sassy-symbol-unres|expandhtmlindex}{282}
+\indexentry{\var{sassy-reloc}|expandhtmlindex}{284}
+\indexentry{sassy-reloc-name|expandhtmlindex}{286}
+\indexentry{sassy-reloc-section|expandhtmlindex}{288}
+\indexentry{sassy-reloc-target-section|expandhtmlindex}{290}
+\indexentry{sassy-reloc-offset|expandhtmlindex}{292}
+\indexentry{sassy-reloc-type|expandhtmlindex}{294}
+\indexentry{sassy-reloc-patcher|expandhtmlindex}{296}
+\indexentry{sassy-reloc-value|expandhtmlindex}{298}
+\indexentry{sassy-reloc-width|expandhtmlindex}{300}
+\indexentry{Additional procedures for \var{sassy-output}|expandhtmlindex}{302}
+\indexentry{sassy-data-list|expandhtmlindex}{304}
+\indexentry{sassy-text-list|expandhtmlindex}{306}
+\indexentry{sassy-text-size|expandhtmlindex}{308}
+\indexentry{sassy-data-size|expandhtmlindex}{310}
+\indexentry{sassy-symbol-exists?|expandhtmlindex}{312}
+\indexentry{\var{push-stacks}|expandhtmlindex}{314}
+\indexentry{make-pushdown-stack|expandhtmlindex}{316}
+\indexentry{make-pushup-stack|expandhtmlindex}{318}
+\indexentry{push-stack-empty?|expandhtmlindex}{320}
+\indexentry{push-stack-push|expandhtmlindex}{322}
+\indexentry{push-stack-pointer|expandhtmlindex}{324}
+\indexentry{push-stack-items|expandhtmlindex}{326}
+\indexentry{push-stack-patch|expandhtmlindex}{328}
+\indexentry{push-stack-push->patcher|expandhtmlindex}{330}
+\indexentry{push-stack-save|expandhtmlindex}{332}
+\indexentry{push-stack-direction|expandhtmlindex}{334}
+\indexentry{push-stack-size|expandhtmlindex}{336}
+\indexentry{push-stack-append!|expandhtmlindex}{338}
+\indexentry{push-stack-align|expandhtmlindex}{340}
+\indexentry{Utilities|expandhtmlindex}{342}
+\indexentry{sassy-hexdump|expandhtmlindex}{344}
+\indexentry{sassy-print-symbols|expandhtmlindex}{346}
+\indexentry{sassy-print-relocs|expandhtmlindex}{348}
+\indexentry{Output Modules|expandhtmlindex}{350}
+\indexentry{Flat Binaries|expandhtmlindex}{352}
+\indexentry{sassy-make-bin|expandhtmlindex}{354}
+\indexentry{ELF Output|expandhtmlindex}{356}
+\indexentry{sassy-make-elf|expandhtmlindex}{358}
+\indexentry{Macro Expansions|expandhtmlindex}{360}
+\indexentry{Supplied macros|expandhtmlindex}{362}
+\indexentry{Comparisons|expandhtmlindex}{364}
+\indexentry{More Control Primitives|expandhtmlindex}{366}
+\indexentry{ELF helpers|expandhtmlindex}{368}
+\indexentry{Explicit Continuation Versions|expandhtmlindex}{370}
