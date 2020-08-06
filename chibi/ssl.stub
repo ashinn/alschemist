@@ -1,0 +1,64 @@
+
+(c-declare
+ "
+#ifdef ECOS
+#  include <sys/sockio.h>
+#else
+#  include <unistd.h>
+#endif
+
+#include <openssl/rand.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+")
+
+(c-link "ssl")
+
+(c-init
+ "
+SSL_load_error_strings();
+SSL_library_init();
+")
+
+(define-c-type SSL_METHOD
+  predicate: ssl-method?)
+
+(define-c (pointer SSL_METHOD) SSLv23_server_method ())
+(define-c (pointer SSL_METHOD) SSLv23_client_method ())
+(define-c (pointer SSL_METHOD) SSLv2_server_method ())
+(define-c (pointer SSL_METHOD) SSLv2_client_method ())
+(define-c (pointer SSL_METHOD) SSLv3_server_method ())
+(define-c (pointer SSL_METHOD) SSLv3_client_method ())
+(define-c (pointer SSL_METHOD) TLSv1_server_method ())
+(define-c (pointer SSL_METHOD) TLSv1_client_method ())
+
+(define-c-type SSL_CTX
+  predicate: ssl-context?
+  finalizer: SSL_CTX_free)
+
+(define-c (free SSL_CTX) (%ssl-ctx-new "SSL_CTX_new")
+  ((pointer SSL_METHOD)))
+
+(define-c long (ssl-ctx-set-mode! "SSL_CTX_set_mode")
+  ((pointer SSL_CTX) long))
+
+(define-c-const long SSL_MODE_ENABLE_PARTIAL_WRITE)
+(define-c-const long SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER)
+
+(define-c-type SSL
+  predicate: ssl?
+  finalizer: SSL_free)
+
+(define-c (free SSL) SSL_new ((link pointer SSL_CTX)))
+
+(define-c int (ssl-set-fd! "SSL_set_fd") ((pointer SSL) int))
+
+(define-c int (ssl-do-handshake "SSL_do_handshake") ((pointer SSL)))
+
+(define-c int (ssl-shutdown "SSL_shutdown") ((pointer SSL)))
+
+(define-c int (ssl-write "SSL_write")
+  ((pointer SSL) bytevector int))
+
+(define-c int (ssl-read "SSL_read")
+  ((pointer SSL) bytevector int))
