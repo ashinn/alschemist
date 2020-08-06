@@ -1,0 +1,128 @@
+
+;;> \section{Low-level Bindings}
+
+(c-system-include "sqlite3.h")
+(c-link "sqlite3")
+
+(define-syntax define-consts
+  (syntax-rules ()
+    ((define-consts type name ...)
+     (begin
+       (define-c-const type name) ...))))
+
+(define-consts int
+  SQLITE_ABORT SQLITE_AUTH SQLITE_BUSY SQLITE_CANTOPEN SQLITE_CONSTRAINT
+  SQLITE_CORRUPT SQLITE_DONE SQLITE_EMPTY SQLITE_ERROR SQLITE_FORMAT
+  SQLITE_FULL SQLITE_INTERNAL SQLITE_INTERRUPT SQLITE_IOERR SQLITE_LOCKED
+  SQLITE_MISMATCH SQLITE_MISUSE SQLITE_NOLFS SQLITE_NOMEM SQLITE_NOTADB
+  SQLITE_NOTFOUND SQLITE_NOTICE SQLITE_OK SQLITE_PERM SQLITE_PROTOCOL
+  SQLITE_RANGE SQLITE_READONLY SQLITE_ROW SQLITE_SCHEMA SQLITE_TOOBIG
+  SQLITE_WARNING
+  SQLITE_INTEGER SQLITE_FLOAT SQLITE_TEXT SQLITE_BLOB SQLITE_NULL
+  )
+
+;;> Sqlite constants.
+;;/
+
+;;> A connection to an sqlite3 database. Closes on gc.
+
+(define-c-struct sqlite3
+  finalizer: sqlite3_close)
+
+;;> A prepared sqlite3 statement. Finalizes on gc.
+
+(define-c-struct sqlite3_stmt
+  finalizer: sqlite3_finalize)
+
+;;> Return the last error message from the db.
+
+(define-c string sqlite3-errmsg (sqlite3))
+
+(c-declare
+ "sqlite3* sqlite3_open_return(const char* path) {
+    sqlite3* db;
+    return sqlite3_open(path, &db) != SQLITE_OK ? NULL : db;
+  }
+")
+
+;;> Open a connection to a new sqlite3 database.  Note if string is
+;;> ":memory:" opens an anonymous in-memory database.
+
+(define-c sqlite3 (sqlite3-open "sqlite3_open_return") (string))
+
+;;> Executes a single SQL string on the database.
+
+(define-c int sqlite3-exec (sqlite3 string (value NULL void*) (value NULL void*) (value NULL char**)))
+
+(c-declare
+ "sqlite3_stmt* sqlite3_prepare_return(sqlite3* db, const char* sql, const int len) {
+    sqlite3_stmt* stmt;
+    char** err;
+    return sqlite3_prepare_v2(db, sql, len, &stmt, NULL) != SQLITE_OK ? NULL : stmt;
+  }
+")
+
+;;> Returns a new prepared SQL statement from the string.
+
+(define-c sqlite3_stmt (sqlite3-prepare "sqlite3_prepare_return") (sqlite3 string (value (string-length arg1) int)))
+
+;;> Bind an integer value to the given argument of the statement.
+
+(define-c int sqlite3-bind-int (sqlite3_stmt int int))
+
+;;> Bind an real value to the given argument of the statement.
+
+(define-c int sqlite3-bind-double (sqlite3_stmt int double))
+
+;;> Bind a string value to the given argument of the statement.
+
+(define-c int sqlite3-bind-text (sqlite3_stmt int string (value (string-length arg2) int) (value NULL void*)))
+
+;;> Bind a bytevector value to the given argument of the statement.
+
+(define-c int sqlite3-bind-blob (sqlite3_stmt int bytevector (value (bytevector-length arg2) int) (value NULL void*)))
+
+;;> Resets any bindings and results of the given statement.
+
+(define-c int sqlite3-reset (sqlite3_stmt))
+
+;;> Advance to the next result of the statement.  If a new or reset
+;;> statement, executes it with the current bindings and advances to
+;;> the first result.
+
+(define-c int sqlite3-step (sqlite3_stmt))
+
+;;> Returns the number of columns in the statement results.
+
+(define-c int sqlite3-column-count (sqlite3_stmt))
+
+;;> Returns the SQL type of the ith columns of the statement results.
+
+(define-c int sqlite3-column-type (sqlite3_stmt int))
+
+;;> Returns the ith column of the current result as an integer.
+
+(define-c int sqlite3-column-int (sqlite3_stmt int))
+
+;;> Returns the ith column of the current result as a real.
+
+(define-c double sqlite3-column-double (sqlite3_stmt int))
+
+;;> Returns the ith column of the current result as a string.
+
+(define-c string sqlite3-column-text (sqlite3_stmt int))
+
+(c-declare
+ "sexp sqlite3_column_bytevector(sexp ctx, sexp self, sqlite3_stmt* stmt, int col) {
+    const void* blob = sqlite3_column_blob(stmt, col);
+    return blob == NULL ? SEXP_FALSE : sexp_string_to_bytes(ctx, sexp_c_string(ctx, blob, sqlite3_column_bytes(stmt, col)));
+  }
+")
+
+;;> Returns the ith column of the current result as a bytevector.
+
+(define-c sexp (sqlite3-column-blob "sqlite3_column_bytevector") ((value ctx sexp) (value self sexp) sqlite3_stmt int))
+
+;;> Returns the size in bytes of the ith column of the current result.
+
+(define-c int sqlite3-column-bytes (sqlite3_stmt int))

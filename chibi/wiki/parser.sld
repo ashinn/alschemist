@@ -1,0 +1,5 @@
+(define-library (chibi wiki parser)
+  (export wiki-parse wiki-parse-inline wiki-word-encode wiki-word-decode)
+  (import (chibi) (chibi io) (chibi regexp)
+          (chibi string) (chibi html-parser) (srfi 1))
+  (include "parser.scm"))

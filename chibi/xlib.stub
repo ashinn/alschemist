@@ -1,0 +1,147 @@
+
+(c-system-include "X11/Xlib.h")
+
+(c-link "X11")
+
+(define-c-type Display
+  predicate: display?)
+
+(define-c-type GC
+  predicate: graphics-context?)
+
+(define-c-type XFontStruct
+  predicate: font?
+  (unsigned-long fid font-id))
+
+(define-c-type XAnyEvent
+  (unsigned-long serial any-event-serial)
+  (int send_event any-event-send-event)
+  ((pointer Display) display any-event-display)
+  (unsigned-long window any-event-window))
+
+(define-c-type XExposeEvent
+  (int x expose-event-x)
+  (int y expose-event-y)
+  (int width expose-event-width)
+  (int height expose-event-height)
+  (int count expose-event-count))
+
+(define-c-type XKeyEvent
+  (int x key-event-x)
+  (int y key-event-y)
+  (unsigned-long time key-event-time)
+  (unsigned state key-event-state)
+  (unsigned keycode key-event-keycode))
+
+(define-c-type XButtonEvent
+  (int x button-event-x)
+  (int y button-event-y)
+  (unsigned-long time button-event-time)
+  (unsigned state button-event-state)
+  (unsigned button button-event-button))
+
+(define-c-type XMotionEvent
+  (int x motion-event-x)
+  (int y motion-event-y)
+  (unsigned-long time motion-event-time)
+  (unsigned state motion-event-state))
+
+;; (define-c-type XEvent
+;;   predicate: event?
+;;   constructor: (make-event)
+;;   (int type event-type)
+;;   )
+
+(define-c-union _XEvent
+  predicate: event?
+  constructor: (make-event)
+  (int type event-type)
+  ((struct XAnyEvent) xany event-any)
+  ((struct XKeyEvent) xkey event-key)
+  ((struct XButtonEvent) xbutton event-button)
+  ((struct XMotionEvent) xmotion event-motion)
+  ((struct XExposeEvent) xexpose event-expose)
+  )
+
+;; event masks
+(define-c-const unsigned-long NoEventMask)
+(define-c-const unsigned-long ExposureMask)
+(define-c-const unsigned-long KeyPressMask)
+(define-c-const unsigned-long KeyReleaseMask)
+(define-c-const unsigned-long ButtonPressMask)
+(define-c-const unsigned-long ButtonReleaseMask)
+(define-c-const unsigned-long EnterWindowMask)
+(define-c-const unsigned-long LeaveWindowMask)
+
+;; event types
+(define-c-const unsigned-long KeyPress)
+(define-c-const unsigned-long KeyRelease)
+(define-c-const unsigned-long ButtonPress)
+(define-c-const unsigned-long ButtonRelease)
+(define-c-const unsigned-long MotionNotify)
+(define-c-const unsigned-long EnterNotify)
+(define-c-const unsigned-long LeaveNotify)
+(define-c-const unsigned-long FocusIn)
+(define-c-const unsigned-long FocusOut)
+(define-c-const unsigned-long KeymapNotify)
+(define-c-const unsigned-long Expose)
+(define-c-const unsigned-long GraphicsExpose)
+(define-c-const unsigned-long NoExpose)
+
+;; state masks
+(define-c-const unsigned-long
+  Button1Mask Button2Mask Button3Mask Button4Mask Button5Mask ShiftMask
+  LockMask ControlMask Mod1Mask Mod2Mask Mod3Mask Mod4Mask Mod5Mask)
+
+;; basics
+(define-c Display (open-display "XOpenDisplay") ((default "\"\"" string)))
+(define-c int (default-screen "DefaultScreen") ((pointer Display)))
+(define-c int (display-width "DisplayWidth") ((pointer Display) (default 0 int)))
+(define-c int (display-height "DisplayHeight") ((pointer Display) (default 0 int)))
+(define-c unsigned-long (root-window "RootWindow") ((pointer Display) int))
+(define-c unsigned-long (default-colormap "DefaultColormap") ((pointer Display) int))
+(define-c unsigned-long (black-pixel "BlackPixel") ((pointer Display) int))
+(define-c unsigned-long (white-pixel "WhitePixel") ((pointer Display) int))
+(define-c int (store-name "XStoreName") ((pointer Display) unsigned-long string))
+(define-c unsigned-long (create-simple-window "XCreateSimpleWindow")
+  ((pointer Display) unsigned-long int int unsigned-int unsigned-int unsigned-int unsigned-long unsigned-long))
+(define-c GC (create-gc "XCreateGC")
+  ((pointer Display) unsigned-long int (maybe-null default NULL void*)))
+(define-c int (set-foreground "XSetForeground")
+  ((pointer Display) GC unsigned-long))
+(define-c int (set-background "XSetBackground")
+  ((pointer Display) GC unsigned-long))
+(define-c int (select-input "XSelectInput")
+  ((pointer Display) unsigned-long unsigned-long))
+(define-c int (map-window "XMapWindow")
+  ((pointer Display) unsigned-long))
+(define-c int (flush "XFlush")
+  ((pointer Display)))
+
+;; events
+(define-c int (next-event "XNextEvent")
+  ((pointer Display) _XEvent))
+(define-c int (put-back-event "XPutBackEvent")
+  ((pointer Display) _XEvent))
+
+;; graphics
+(define-c int (draw-point "XDrawPoint")
+  ((pointer Display) unsigned-long GC int int))
+(define-c int (draw-line "XDrawLine")
+  ((pointer Display) unsigned-long GC int int int int))
+(define-c int (draw-arc "XDrawArc")
+  ((pointer Display) unsigned-long GC int int int int int int))
+(define-c int (fill-arc "XFillArc")
+  ((pointer Display) unsigned-long GC int int int int int int))
+(define-c int (draw-rectangle "XDrawRectangle")
+  ((pointer Display) unsigned-long GC int int int int))
+(define-c int (fill-rectangle "XFillRectangle")
+  ((pointer Display) unsigned-long GC int int int int))
+
+(define-c XFontStruct (load-query-font "XLoadQueryFont")
+  ((pointer Display) string))
+(define-c int (set-font "XSetFont")
+  ((pointer Display) GC unsigned-long))
+(define-c int (draw-string "XDrawString")
+  ((pointer Display) unsigned-long GC int int
+   string (value (string-length arg5) int)))
