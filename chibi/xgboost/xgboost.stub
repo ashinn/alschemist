@@ -1,0 +1,100 @@
+
+(c-link "xgboost")
+(c-include "xgboost/c_api.h")
+
+(define-c-int-type bst_ulong)
+
+(define-c-type DMatrixHandle
+  predicate: dmatrix?
+  finalizer: XGDMatrixFree)
+(define-c-type BoosterHandle
+  predicate: booster?
+  finalizer: XGBoosterFree)
+
+(define-c string (xgb-get-last-error XGBGetLastError) ())
+
+(define-c errno (xgb-create-matrix XGDMatrixCreateFromMat_omp)
+  (f32vector bst_ulong bst_ulong float
+             (result DMatrixHandle)
+             (default 1 int)))
+
+(define-c errno (xgb-create-matrix/csr XGDMatrixCreateFromCSREx)
+  (u64vector u32vector f32vector (value (length arg0) size_t) size_t
+             (default 0 size_t) (result DMatrixHandle)))
+
+(define-c errno (xgb-create-matrix-from-file XGDMatrixCreateFromFile)
+  (string (default 0 boolean) (result DMatrixHandle)))
+
+(define-c errno (xgb-matrix-num-rows XGDMatrixNumRow)
+  (DMatrixHandle (result bst_ulong)))
+(define-c errno (xgb-matrix-num-cols XGDMatrixNumCol)
+  (DMatrixHandle (result bst_ulong)))
+
+(define-c errno (%xgb-booster-create XGBoosterCreate)
+  ((array DMatrixHandle)
+   (value (length arg0) bst_ulong)
+   (result maybe-null BoosterHandle)))
+
+(define-c errno (xgb-booster-set-param! XGBoosterSetParam)
+  (BoosterHandle string string))
+
+(define-c errno (xgb-booster-update-one-iter XGBoosterUpdateOneIter)
+  (BoosterHandle int DMatrixHandle))
+
+(define-c errno (xgb-booster-eval-one-iter XGBoosterEvalOneIter)
+  (BoosterHandle int (array DMatrixHandle) (array (const string)) (value (length arg2) bst_ulong) (result const string)))
+
+(define-c errno (xgb-booster-boost-one-iter XGBoosterBoostOneIter)
+  (BoosterHandle DMatrixHandle f32vector f32vector (value (uvector-length arg2) bst_ulong)))
+
+(c-declare
+ "sexp sexp_xgb_booster_predict(sexp ctx, sexp self,
+                                BoosterHandle handle,
+                                DMatrixHandle dmat,
+                                int option_mask,
+                                unsigned ntree_limit) {
+  sexp_gc_var1(res);
+  bst_ulong out_len;
+  const float* out;
+  int i, err = XGBoosterPredict(handle, dmat, option_mask, ntree_limit, &out_len, &out);
+  if (err) {
+    return SEXP_FALSE;
+  }
+  sexp_gc_preserve1(ctx, res);
+  res = sexp_make_uvector(ctx, sexp_make_fixnum(SEXP_F32), sexp_make_fixnum(out_len));
+  memcpy(sexp_uvector_data(res), out, out_len*sizeof(out[0]));
+  sexp_gc_release1(ctx);
+  /*free(out);*/
+  return res;
+}")
+
+;; optional bit_mask:
+;;   0: normal prediction
+;;   1: output margin instead of transformed value
+;;   2: output leaf index of trees instead of leaf value, note leaf index is unique per tree
+;;   4: output feature contributions to individual predictions
+
+(define-c sexp (xgb-booster-predict sexp_xgb_booster_predict)
+  ((value ctx sexp) (value self sexp) BoosterHandle DMatrixHandle int (default 0 unsigned)))
+
+(c-declare
+ "sexp sexp_xgb_matrix_float_info(sexp ctx, sexp self,
+                                  DMatrixHandle dmat,
+                                  const char* field) {
+  sexp_gc_var1(res);
+  bst_ulong out_len;
+  const float* out;
+  int i, err = XGDMatrixGetFloatInfo(dmat, field, &out_len, &out);
+  if (err) {
+    return SEXP_FALSE;
+  }
+  sexp_gc_preserve1(ctx, res);
+  res = sexp_make_uvector(ctx, sexp_make_fixnum(SEXP_F32), sexp_make_fixnum(out_len));
+  memcpy(sexp_uvector_data(res), out, out_len*sizeof(out[0]));
+  sexp_gc_release1(ctx);
+  /*free(out);*/
+  return res;
+}")
+
+(define-c sexp (xgb-matrix-float-info sexp_xgb_matrix_float_info)
+  ((value ctx sexp) (value self sexp) DMatrixHandle string))
