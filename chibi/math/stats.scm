@@ -146,7 +146,7 @@
 ;; regularized
 (define (lower-incomplete-gamma s z)
   (let lp ((k 1) (x 1.0) (sum 1.0))
-    (if (or (= k 100) (< (/ x sum) 1e-14))
+    (if (or (= k 1000) (< (/ x sum) 1e-14))
         (exp (+ (* s (log z))
                 (log sum)
                 (- z)
