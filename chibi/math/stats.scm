@@ -4,9 +4,11 @@
 ;;> it is important to be able to analyze that data, and so statistics
 ;;> should have a prominant role in any programming language's standard
 ;;> libraries.
-
+;;>
 ;;> Broadly speaking statistics can be divided into descriptive
-;;> statistics and inferential statistics.
+;;> statistics and inferential statistics.  This library takes a
+;;> holistic view of a distribution, with procedures working on both
+;;> theoretical and empirical distributions.
 
 (define-syntax assert
   (syntax-rules ()
@@ -109,8 +111,25 @@
     (/ (map-sum (lambda (x) (square (- x mu))) seq)
        (- (seq-length seq) 1))))
 
+(define (seq-pop-variance seq . o)
+  (let ((mu (if (pair? o) (car o) (mean seq))))
+    (/ (map-sum (lambda (x) (square (- x mu))) seq)
+       (seq-length seq))))
+
 (define (seq-stdev seq . o)
   (sqrt (apply seq-variance seq o)))
+
+(define (seq-skew seq . o)
+  (let ((mu (apply seq-mean seq o)))
+    (/ (map-sum (lambda (x) (cube (- x mu))) seq)
+       (seq-length seq)
+       (cube (apply seq-stdev seq o)))))
+
+(define (seq-kurtosis seq . o)
+  (let ((mu (apply mean seq o)))
+    (/ (map-sum (lambda (x) (tesseract (- x mu))) seq)
+       (seq-length seq)
+       (tesseract (apply standard-deviation seq o)))))
 
 (define (seq-maximum seq . o)
   (let ((less (if (pair? o) (car o) <)))
@@ -121,249 +140,10 @@
     (seq-fold (lambda (a b) (if (less b a) b a)) +inf.0 seq)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Utilities
+;;> \section{Distributions}
 
-(define (cube x)
-  (* x x x))
+;;> \subsection{Distribution Type}
 
-(define (tesseract x)
-  (* x x x x))
-
-(define (sign x)
-  (cond
-   ((zero? x) 0)
-   ((positive? x) 1)
-   (else -1)))
-
-(define (factorial n)
-  (let fact ((n n) (res 1))
-    (if (<= n 1) res (fact (- n 1) (+ n res)))))
-
-(define (loggamma x)
-  (call-with-values (lambda () (flloggamma x))
-    (lambda (res sign) res)))
-
-;; regularized
-(define (lower-incomplete-gamma s z)
-  (let lp ((k 1) (x 1.0) (sum 1.0))
-    (if (or (= k 1000) (< (/ x sum) 1e-14))
-        (exp (+ (* s (log z))
-                (log sum)
-                (- z)
-                (- (loggamma (+ s 1.)))))
-        (let* ((x2 (* x (/ z (+ s k))))
-               (sum2 (+ sum x2)))
-          (lp (+ k 1) x2 sum2)))))
-
-(define (beta-pdf a b x)
-  (/ (* (expt x (- a 1))
-        (expt (- 1 x) (- b 1)))
-     (/ (* (flgamma a) (flgamma b))
-        (flgamma (+ a b)))))
-
-(define (beta a b . o)
-  (define epsilon 1e-30)
-  (define delta 1e-8)
-  (define limit 200)
-  (define (abs-max a b)
-    (if (< (abs a) (abs b)) b a))
-  (let ((x (if (pair? o) (car o) 1)))
-    (cond
-     ((= x 1)
-      (exp (+ (loggamma (inexact a))
-              (loggamma (inexact b))
-              (- (loggamma (inexact (+ a b)))))))
-     ((not (< 0 x 1))
-      +inf.0)
-     ((> x (/ (+ a 1) (+ a b 2)))
-      (- 1 (beta b a (- 1 x))))
-     (else
-      ;; Lentz's algorithm to solve the continued fraction.
-      (let lp ((i 0) (f 1) (c 1) (d 0))
-        (cond
-         ((>= i limit)
-          +inf.0)
-         ((< (abs (- 1 (* c d))) delta)
-          (* (/ (exp (+ (* a (log x))
-                        (* b (log (- 1 x)))
-                        (- (loggamma (inexact (+ a b)))
-                           (loggamma (inexact a))
-                           (loggamma (inexact b)))))
-                a)
-             (- f 1)))
-         (else
-          (let* ((m (quotient i 2))
-                 (num (cond ((zero? i) 1)
-                            ((even? i)
-                             (/ (* m (- b m) x)
-                                (* (+ a (* 2 m) -1)
-                                   (+ a (* 2 m)))))
-                            (else
-                             (- (/ (* (+ a m) (+ a b m) x)
-                                   (* (+ a (* 2 m))
-                                      (+ a (* 2 m) 1)))))))
-                 (c (abs-max (+ 1 (/ num c)) epsilon))
-                 (d (/ (abs-max (+ 1 (* num d)) epsilon))))
-            (lp (+ i 1) (* f c d) c d)))))))))
-
-(define (inverse-transform-random cdf statistics)
-  (define (finite-lower-bound f x lo)
-    (if (finite? lo)
-        lo
-        (let lp ((lo -1)) (if (< lo x) lo (lp (* lo 10))))))
-  (define (finite-upper-bound f x hi)
-    (if (finite? hi)
-        hi
-        (let lp ((hi 1)) (if (> hi x) hi (lp (* hi 10))))))
-  (lambda ()
-    (let ((x (random-real)))
-      (let lp ((lo (finite-lower-bound cdf x (statistics-minimum statistics)))
-               (hi (finite-upper-bound cdf x (statistics-maximum statistics)))
-               (count 0))
-        (let* ((mid (/ (+ lo hi) 2))
-               (x^ (cdf mid)))
-          (cond
-           ((or (= x^ x) (> count 63)) mid)
-           ((< x^ x) (lp lo mid (+ count 1)))
-           (else (lp mid hi (+ count 1)))))))))
-
-(define (numeric-diff f)
-  (lambda (x) (/ (- (f (+ x .001)) (f (- x .001))) (* 2 .001))))
-
-;; aka binomial coefficient
-(define (combinations n k)
-  (let lp ((n n) (num 1) (i 1) (den 1))
-    (if (> i k)
-        (/ num den)
-        (lp (- n 1) (* n num) (+ i 1) (* i den)))))
-
-(define (permutations n k)
-  (* (combinations n k) (factorial k)))
-
-(define the-equal-comparator (make-equal-comparator))
-
-(define-record-type Running-Sum
-  (%make-running-sum sum compensation)
-  running-sum?
-  (sum running-sum-sum running-sum-sum-set!)
-  (compensation running-sum-compensation running-sum-compensation-set!))
-
-(define (make-running-sum . o)
-  (%make-running-sum (if (pair? o) (car o) 0) 0))
-
-(define (running-sum-get rs)
-  (+ (running-sum-sum rs)
-     (running-sum-compensation rs)))
-
-(define (running-sum-inc! rs elt)
-  (let* ((sum (running-sum-sum rs))
-         (t (+ sum elt))
-         (c (running-sum-compensation rs)))
-    (if (>= (abs (running-sum-sum rs)) (abs elt))
-        (running-sum-compensation-set! rs (+ c (+ (- sum t) elt)))
-        (running-sum-compensation-set! rs (+ c (+ (- elt t) sum))))
-    (running-sum-sum-set! rs t)
-    rs))
-
-(define (running-sum-dec! rs x)
-  (running-sum-inc! rs (- x)))
-
-(define (map-sum proc seq . o)
-  (if (pair? o)
-      ;; TODO: more than 2 seqs
-      (let ((len1 (seq-length seq))
-            (len2 (seq-length (car o))))
-        (unless (= len1 len2)
-          (error "sequences must have equal length" seq (car o)))
-        (do ((i 0 (+ i 1))
-             (res (make-running-sum)
-                  (let ((e1 (if (pair? seq1) (car seq1) (seq-ref seq i)))
-                        (e2 (if (pair? seq2) (car seq2) (seq-ref (car o) i))))
-                    (running-sum-inc! res (proc e1 e2))))
-             (seq1 seq (if (pair? seq1) (cdr seq1) '()))
-             (seq2 (car o) (if (pair? seq2) (cdr seq2) '())))
-            ((= i len1)
-             (running-sum-get res))))
-      (if (vector? seq)
-          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
-            (if (negative? i)
-                (+ sum c)
-                (let* ((elt (proc (vector-ref seq i)))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
-                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
-          (let lp ((ls seq) (sum 0) (c 0))
-            (if (null? ls)
-                (+ sum c)
-                (let* ((elt (proc (car ls)))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
-                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
-
-;; Neumaier's variant of Kahan summation
-(define (sum seq . o)
-  (if (pair? o)
-      (map-sum (car o) seq)
-      (if (vector? seq)
-          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
-            (if (negative? i)
-                (+ sum c)
-                (let* ((elt (vector-ref seq i))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
-                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
-          (let lp ((ls seq) (sum 0) (c 0))
-            (if (null? ls)
-                (+ sum c)
-                (let* ((elt (car ls))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
-                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
-
-(define (square-sum seq . o)
-  (if (pair? o)
-      (map-sum (lambda (x) (square ((car o) x))) seq)
-      (map-sum square seq)))
-
-(define (reciprocal-sum seq . o)
-  (if (pair? o)
-      (map-sum (lambda (x) (/ ((car o) x))) seq)
-      (map-sum (lambda (x) (/ x)) seq)))
-
-(define (log-sum seq . o)
-  (if (pair? o)
-      (map-sum (lambda (x) (log ((car o) x))) seq)
-      (map-sum log seq)))
-
-(define (sum/fast seq)
-  (seq-fold + 0 seq))
-
-(define (square-sum/fast seq)
-  (seq-fold (lambda (sum x) (+ (square x) sum)) 0 seq))
-
-(define (log-sum/fast seq)
-  (seq-fold (lambda (sum x) (+ (log x) sum)) 0 seq))
-
-;; multiplication is stable, no need for error handling
-(define (product seq . o)
-  (if (pair? o)
-      (seq-fold (lambda (acc x) (* ((car o) x) acc)) 1 seq)
-      (seq-fold * 1 seq)))
-
-;;> The relative change from x to y.
-(define (gain x y)
-  (if (zero? x)
-      y
-      (/ (- y x) x)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Distributions
-
-;; Maintains a random running sample of up to max-size elements.
 (define-record-type Reservoir
   (%make-reservoir elements max-size count)
   reservoir?
@@ -371,155 +151,12 @@
   (max-size reservoir-max-size)
   (count reservoir-count reservoir-count-set!))
 
-(define (make-reservoir max-size)
-  (%make-reservoir (make-vector (max max-size 128) #f) max-size 0))
-
-(define (reservoir-maybe-add! rv elt)
-  (cond
-   ((< (reservoir-count rv)
-       (vector-length (reservoir-elements rv)))
-    (vector-set! (reservoir-elements rv)
-                 (reservoir-count rv)
-                 elt))
-   ((< (reservoir-count rv)
-       (reservoir-max-size rv))
-    (let ((elts (make-vector
-                 (min (* 2 (vector-length (reservoir-elements rv)))
-                      (reservoir-max-size rv))
-                 #f)))
-      (vector-copy! elts 0 (reservoir-elements rv))
-      (vector-set! elts (reservoir-count rv) elt)
-      (reservoir-elements-set! rv elts)))
-   ((< (random-real)
-       (/ (reservoir-max-size rv) (reservoir-count rv)))
-    (vector-set! (reservoir-elements rv)
-                 (random-integer (reservoir-max-size rv))
-                 elt)))
-  (reservoir-count-set! rv (+ 1 (reservoir-count rv))))
-
-(define (reservoir->vector! rv)
-  (let ((elts (reservoir-elements rv))
-        (count (reservoir-count rv)))
-    (if (< count (vector-length elts))
-        (vector-copy elts 0 count)
-        elts)))
-
-;; Trivial implementation based on:
-;;   http://jmlr.org/papers/volume11/ben-haim10a/ben-haim10a.pdf
-;; for more sophisticated techniques see:
-;;   http://www.mathcs.emory.edu/~cheung/papers/StreamDB/Histogram/2005-Guha-Histogram.pdf
-
 (define-record-type Histogram
   (%make-histogram bins max-bins count)
   histogram?
   (bins histogram-bins histogram-bins-set!)
   (max-bins histogram-max-bins)
   (count histogram-count histogram-count-set!))
-
-(define (make-histogram . o)
-  (let ((max-bins (if (pair? o) (car o) 100)))
-    (%make-histogram '() max-bins 0)))
-
-(define (histogram-add! hist elt)
-  (histogram-count-set! hist (+ 1 (histogram-count hist)))
-  (cond
-   ((null? (histogram-bins hist))
-    (histogram-bins-set! hist (list (cons elt 1))))
-   ((< elt (caar (histogram-bins hist)))
-    (histogram-bins-set! hist (cons (cons elt 1) (histogram-bins hist)))
-    (histogram-trim! hist))
-   (else
-    (let lp ((ls (histogram-bins hist)))
-      (cond
-       ((= elt (caar ls))
-        (set-cdr! (car ls) (+ 1 (cdar ls))))
-       ((or (null? (cdr ls)) (< elt (caar (cdr ls))))
-        (set-cdr! ls (cons (cons elt 1) (cdr ls)))
-        (histogram-trim! hist))
-       (else
-        (lp (cdr ls))))))))
-
-(define (list->histogram seq . o)
-  (let ((res (apply make-histogram o)))
-    (seq-for-each (lambda (x) (histogram-add! res x)) seq)
-    res))
-(define vector->histogram list->histogram)
-
-(define (histogram-trim! hist)
-  (define (assoc-closest ls)
-    (let lp ((ls ls) (closest ls) (diff +inf.0))
-      (if (or (null? ls) (null? (cdr ls)))
-          closest
-          (let ((diff2 (abs (- (caar ls) (caar (cdr ls))))))
-            (if (< diff2 diff)
-                (lp (cdr ls) ls diff2)
-                (lp (cdr ls) closest diff))))))
-  (when (> (length (histogram-bins hist)) (histogram-max-bins hist))
-    (let* ((ls (assoc-closest (histogram-bins hist)))
-           (a (car ls))
-           (b (cadr ls))
-           (total (+ (cdr a) (cdr b)))
-           (avg (/ (+ (* (car a) (cdr a)) (* (car b) (cdr b))) total)))
-      (set-car! ls (cons avg total))
-      (set-cdr! ls (cddr ls)))))
-
-(define (histogram-min hist)
-  (caar (histogram-bins hist)))
-
-(define (histogram-max hist)
-  (car (last (histogram-bins hist))))
-
-(define (histogram-scale hist . o)
-  (if (null? (histogram-bins hist))
-      '#()
-      (let* ((num-bins (if (pair? o) (car o) (length (histogram-bins hist))))
-             (o (if (pair? o) (cdr o) '()))
-             (lo (if (pair? o) (car o) (histogram-min hist)))
-             (o (if (pair? o) (cdr o) '()))
-             (hi (if (pair? o) (car o) (histogram-max hist)))
-             (width (/ (- hi lo) num-bins))
-             (res (make-vector num-bins 0)))
-        (do ((ls (histogram-bins hist) (cdr ls)))
-            ((null? ls) res)
-          (let ((i (min (- num-bins 1)
-                        (max 0 (exact (floor (/ (- (caar ls) lo) width)))))))
-            (vector-set! res i (+ (cdar ls) (vector-ref res i))))))))
-
-(define (histogram-quantile hist x)
-  ;; TODO: average quantile between bins?
-  (let ((count (* x (histogram-count hist))))
-    (let lp ((ls (histogram-bins hist))
-             (c 0))
-      (cond ((null? ls) -1)
-            ((>= (+ c (cdar ls)) count) (caar ls))
-            (else (lp (cdr ls) (+ c (cdar ls))))))))
-
-(define (histogram-deciles hist)
-  (map (lambda (x) (histogram-quantile hist (* x 0.1)))
-       (iota 10)))
-
-(define (histogram-plot-ascii hist . o)
-  (let* ((bins (histogram-bins hist))
-         (width (if (pair? o) (car o) (max 78 (length bins))))
-         (height (if (and (pair? o) (pair? (cdr o))) (cadr o) 40))
-         (limit (fold (lambda (bin acc) (max (cdr bin) acc)) 0 bins)))
-    (if (<= (length bins) width)
-        (do ((i (- height 1) (- i 1)))
-            ((< i 0))
-          (write-string
-           (list->string
-            (map (lambda (bin)
-                   (if (> (cdr bin) (* limit (/ i height))) #\* #\space))
-                 bins)))
-          (newline))
-        (error "bin scaling not supported, use fewer bins or more width"))))
-
-(define (histogram-cdf hist x)
-  (let lp ((ls (histogram-bins hist))
-           (c 0))
-    (cond ((null? ls) 1)
-          ((> (caar ls) x) (/ c (histogram-count hist)))
-          (else (lp (cdr ls) (+ c (cdar ls)))))))
 
 ;; The descriptive statistics.
 (define-record-type Statistics
@@ -535,12 +172,6 @@
   (minimum statistics-minimum statistics-minimum-set!)
   (maximum statistics-maximum statistics-maximum-set!))
 
-(define (make-empty-statistics)
-  (make-statistics #f #f #f #f #f #f #f #f #f))
-
-(define (statistics-stdev stats)
-  (sqrt (statistics-variance stats)))
-
 ;; A population summary, optionally with a sample which could be
 ;; running, and histogram.
 (define-record-type Summary
@@ -552,6 +183,33 @@
   (msd summary-msd summary-msd-set!)
   (density summary-density summary-density-set!)
   (window? summary-window? summary-window?-set!))
+
+;; Any theoretical, empirical or sampled distribution.
+(define-record-type Distribution
+  (%make-dist name pdf cdf random population statistics summary discrete? population?)
+  distribution?
+  (name distribution-name)
+  ;; Pure distributions are determined by a pdf, cdf and random function.
+  (pdf distribution-pdf)
+  (cdf distribution-cdf)
+  (random distribution-random)
+  ;; The sampled elements for a non-pure distribution.
+  (population distribution-population)
+  ;; The basic statistics (mean, variance, etc.) of the distribution.
+  ;; May be computed lazily for non-pure distributions.
+  (statistics distribution-statistics distribution-statistics-set!)
+  ;; The summary.
+  (summary distribution-summary)
+  ;; True iff the distribution is discrete.
+  (discrete? distribution-discrete?)
+  ;; True iff this is the full population, as opposed to a sample.
+  (population? distribution-population?))
+
+(define (make-empty-statistics)
+  (make-statistics #f #f #f #f #f #f #f #f #f))
+
+(define (statistics-stdev stats)
+  (sqrt (statistics-variance stats)))
 
 (define (summary-count summary)
   (reservoir-count (summary-sample summary)))
@@ -590,55 +248,65 @@
 (define (summary-stdev summary)
   (sqrt (summary-variance summary)))
 
-;; Any theoretical, empirical or sampled distribution.
-(define-record-type Distribution
-  (%make-dist name pdf cdf random population statistics summary discrete? population?)
-  distribution?
-  (name distribution-name)
-  ;; Pure distributions are determined by a pdf, cdf and random function.
-  (pdf distribution-pdf)
-  (cdf distribution-cdf)
-  (random distribution-random)
-  ;; The sampled elements for a non-pure distribution.
-  (population distribution-population)
-  ;; The basic statistics (mean, variance, etc.) of the distribution.
-  ;; May be computed lazily for non-pure distributions.
-  (statistics distribution-statistics distribution-statistics-set!)
-  ;; The summary.
-  (summary distribution-summary)
-  ;; True iff the distribution is discrete.
-  (discrete? distribution-discrete?)
-  ;; True iff this is the full population, as opposed to a sample.
-  (population? distribution-population?))
+;;> \procedure{(distribution? x)}
+;;> Returns \scheme{#t} iff x is a distribution.
 
-;; A theoretical distribution.
+;;> \procedure{(pure-distribution name pdf cdf statistics [random])}
+;;> Creates a new theoretical distribution.  \var{name} should be a
+;;> symbol and is used for debugging.  The probability density
+;;> function \var{pdf}, cumulative distribution function \var{cdf},
+;;> and summary \var{statistics} are required.  \var{random} is
+;;> optionally and can be inferred from the \var{cdf} but faster
+;;> implementations are usually available.
 (define (pure-distribution name pdf cdf statistics . o)
   (let ((random (if (pair? o)
                     (car o)
                     (inverse-transform-random cdf statistics))))
     (%make-dist name pdf cdf random #f statistics #f #f #t)))
 
-;; A theoretical discrete distribution.
-(define (pure-discrete-distribution name pdf cdf statistics . o)
+;;> Creates a new theoretical discrete distribution, similar to
+;;> \scheme{pure-distribution}.
+(define (pure-discrete-distribution name pmf cdf statistics . o)
   (let ((random (if (pair? o)
                     (car o)
                     (inverse-transform-random cdf statistics))))
-    (%make-dist name pdf cdf random #f statistics #f #t #t)))
+    (%make-dist name pmf cdf random #f statistics #f #t #t)))
 
-;; A single sample distribution.
+;;> Creates a new distribution for the sampled data in \var{seq}.
 (define (distribution seq)
   (%make-dist #f #f #f #f seq #f #f (seq-every exact-integer? seq) #f))
 
-;; Equivalent to \scheme{distribution}, but records that the input
-;; represents the full population rather than a subsample.
+;;> Equivalent to \scheme{distribution}, but records that \var{seq}
+;;> represents the full population rather than a subsample.
 (define (population seq)
   (%make-dist #f #f #f #f seq #f #f (seq-every exact-integer? seq) #t))
 
-;; A running sample distribution to which new elements can be added.
+;;> Creates a new running sample distribution to which new elements
+;;> can be added.
 (define (open-distribution)
   (%make-dist #f #f #f #f (make-reservoir) #f #f #f))
 
-;; A distribution from summmary statistics, without a sample.
+;;> Returns a new distribution from summmary statistics, without a
+;;> sample.  Takes keyword arguments in the style of
+;;> \scheme{(chibi optional)}, with the following values:
+;;>
+;;> \itemlist[
+;;> \item{name:}
+;;> \item{size:}
+;;> \item{mean:}
+;;> \item{median:}
+;;> \item{mode:}
+;;> \item{variance:}
+;;> \item{skew:}
+;;> \item{kurtosis:}
+;;> \item{minimum:}
+;;> \item{maximum:}
+;;> \item{discrete?:}
+;;> \item{population?:}
+;;> ]
+;;>
+;;> Example: create a summary given just a mean and variance:
+;;> \example{(mean (summary-distribution 'mean: 0.5 'variance: 2.5))}
 (define (summary-distribution . o)
   (let-keywords o ((name #f) (size #f) (mean #f) (median #f) (mode #f)
                    (variance #f) (skew #f) (kurtosis #f)
@@ -648,23 +316,23 @@
                                   skew kurtosis minimum maximum)))
       (%make-dist name #f #f #f #f stats #f discrete? population?))))
 
-;; A utility for a summary distribution of bernouli trials, based on
-;; the number of successes out of the total number of trials.
-(define (bernouli-trials successes trials)
+;;> A utility for a summary distribution of bernoulli trials, based on
+;;> the number of successes out of the total number of trials.
+(define (bernoulli-trials successes trials)
   (assert (<= successes trials))
   (summary-distribution 'mean: (/ successes trials) 'size: trials))
 
-;; A utility for a summary distribution where we only know the mean.
+;;> A utility for a summary distribution where we only know the mean.
 (define (mean-distribution mean)
   (summary-distribution 'mean: mean))
 
-;; Returns a new distribution containing only the summary statistics
-;; of the given distribution.
-;; TODO: include an option to preserve a subsample summary
+;;> Returns a new distribution containing only the summary statistics
+;;> of the given distribution.
 (define (summarize dist)
+  ;; TODO: include an option to preserve a subsample summary
   (summary-distribution
    'name: (and (distribution? dist) (distribution-name dist))
-   'size: (count dist)
+   'size: (size dist)
    'mean: (mean dist)
    'median: (median dist)
    'mode: (mode dist)
@@ -679,12 +347,17 @@
    'population?: (and (distribution? dist)
                       (distribution-population? dist))))
 
+;;> Returns \scheme{#t} iff \var{dist1} is a theoretical distribution
+;;> (is derived from a pdf).
 (define (distribution-pure? dist)
   (and (distribution? dist) (distribution-pdf dist) #t))
 
+;;> Returns \scheme{#t} iff \var{dist1} is a sample distribution to
+;;> which new elements can be added.
 (define (distribution-open? dist)
   (reservoir? (distribution-population dist)))
 
+;;> Adds a new element \var{elt} to the sample distribution \var{dist}.
 (define (distribution-add! dist elt)
   (when (not (distribution-open? dist))
     (error "can't add elements to a fixed distribution" dist elt))
@@ -692,10 +365,19 @@
   (if (distribution-statistics dist)
       (distribution-statistics-set! dist #f)))
 
-(define (distribution-values dist)
+;;> \procedure{(distribution-pdf dist)}
+;;> Returns the pdf if \var{dist} is pure a distribution, \scheme{#f} otherwise.
+
+;;> \procedure{(distribution-cdf dist)}
+;;> Returns the cdf if \var{dist} is pure a distribution, \scheme{#f} otherwise.
+
+;;> Returns the underlying values, or sampled representatives, of
+;;> \var{dist}, if available.  If you want a sample from any
+;;> distribution, use \scheme{random-sample}.
+(define (distribution-values dist . o)
   (cond
    ((not (distribution? dist))
-    dist)
+    (if (and (pair? o) (car o)) (seq-map (car o) dist) dist))
    ((distribution-population dist))
    ((distribution-summary dist)
     (summary->vector! (distribution-summary dist)))
@@ -729,7 +411,7 @@
         res)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Specific distributions
+;;> \subsection{Standard Distributions}
 
 (define (normal-pdf x mu sigma)
   (/ (exp (- (/ (square (- x mu))
@@ -762,7 +444,11 @@
                (null? (cdr ls)))
            (cdar ls))))))
 
-;; aka gaussian
+;;> Returns a new normal (gaussian) distribution, with the given
+;;> \var{mean} and \var{variance}.  Also know as a bell curve, many
+;;> things are normally distributed, and the Central Limit THeorem
+;;> says that the sum of independent random variables tends towards
+;;> normal.
 (define (normal-distribution . o)
   (let* ((mean (if (pair? o) (car o) 0))
          (variance (if (and (pair? o) (pair? (cdr o))) (cadr o) 1))
@@ -777,12 +463,14 @@
      (lambda (x)
        (/ (+ 1 (flerf (/ (- x mean) (* (sqrt 2) variance))))
           2))
-     (make-statistics #f mean mean mean variance 0 0 -inf.0 +inf.0)
+     (make-statistics #f mean mean mean variance 0 3 -inf.0 +inf.0)
      (lambda ()
        (+ mean (* variance
                   (sqrt (* -2.0 (log (random-real))))
                   (cos (* 2.0 (acos -1) (random-real)))))))))
 
+;;> Returns a new continuous uniform distribution over [\var{a},
+;;> \var{b}].  Every value in the range is equally likely.
 (define (uniform-distribution a b . o)
   (assert (<= a b))
   (let* ((mean (/ (+ a b) 2))
@@ -802,6 +490,9 @@
      (lambda ()
        (+ a (* (random-real) (- b a)))))))
 
+;;> Returns a new discrete uniform distribution over [\var{a},
+;;> \var{b}], in \var{step} intervals.  Every value in the range is
+;;> equally likely.
 (define (discrete-uniform-distribution a b . o)
   (assert (<= a b))
   (let* ((step (if (pair? o) (car o) 1))
@@ -821,6 +512,9 @@
      (make-statistics #f mean mean #f variance 0 kurtosis a b)
      (lambda () (+ a (* step (random-integer size)))))))
 
+;;> Returns a new poisson distribution, a discrete distribution
+;;> measuring the probability that a certain number of events occur
+;;> within a certain period of time.
 (define (poisson-distribution lam k . o)
   (when (<= lam 0)
     (error "poisson distribution lambda must be positive" lam))
@@ -834,7 +528,7 @@
          (kurtosis (/ lam))
          (random-source (if (pair? o) (car o) default-random-source))
          (random-real (random-source-make-reals random-source)))
-    (pure-distribution
+    (pure-discrete-distribution
      'poisson
      (lambda (x)
        (/ (* (expt lam k) (exp (- lam))) (factorial k)))
@@ -851,6 +545,9 @@
               (p 1 (* p (random-real))))
              ((<= p limit) (- k 1))))))))
 
+;;> Returns a new kolmogorov distribution, the distribution of the
+;;> suprememum of the Brownian bridge over [0, 1].  This is used in
+;;> the Kolmogorov-Smirnoff test.
 (define (kolmogorov-distribution n)
   (let* ((cdf (lambda (x) (kolmogorov-cdf n x)))
          (mean (/ .8687 (sqrt n)))
@@ -862,6 +559,9 @@
      cdf
      (make-statistics #f mean median median variance 0. 0. 0 1))))
 
+;;> Returns a new binomial distribution, a discrete distribution of
+;;> the number of successes over \var{n} Bernoulli trials with
+;;> probability \var{p}.
 (define (binomial-distribution n p)
   (let* ((mean (* n p))
          (median (exact (round mean)))
@@ -894,7 +594,8 @@
         (/ d2 2)
         (/ (* d1 x) (+ (* d1 x) d2))))
 
-;; aka Fisher–Snedecor distribution
+;;> Returns a new F-distribution, aka the Fisher–Snedecor
+;;> distribution, used in the F-test for ANOVA.
 (define (f-distribution d1 d2)
   (let ((mean (/ d2 (- d2 2)))
         (mode (/ (* (- d1 2) d2) d1 (+ d2 2)))
@@ -913,11 +614,26 @@
      (make-statistics #f mean mean mode variance skew kurtosis 0 +inf.0))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Descriptive statistics
+;;> \section{Descriptive Statistics}
 
-;; The size of the distribution population, which may be +inf.0 for
-;; pure distributions, or #f if unknown.
-(define (count dist)
+;;> Descriptive statistics summarize some aspect of a distribution.
+;;> The following procedures all take either a distribution, or for
+;;> convenience a list or vector as an implicit sample distribution as
+;;> constructed by the \scheme{distribution} procedure.
+;;>
+;;> If a list of vector is passed, an optional getter argument is
+;;> allowed to return the value of each element in the sequence.  This
+;;> is to allow idioms similar to dataframes in R and numpy, where the
+;;> sequence elements could be vectors or records containing multiple
+;;> fields.
+
+;;> \procedure{(size dist [getter])}
+;;> Returns the size of the distribution population, which may be
+;;> +inf.0 for pure distributions, or #f if unknown.
+;;>
+;;> \example{(size '(1 2 3))}
+;;> \example{(size (normal-distribution 0 1))}
+(define (size dist . o)
   (cond
    ((not (distribution? dist)) (seq-length dist))
    ((distribution-pure? dist) +inf.0)
@@ -929,172 +645,326 @@
     (reservoir-count (summary-sample (distribution-summary dist))))
    (else #f)))
 
-;; http://www.johnmyleswhite.com/notebook/2013/03/22/modes-medians-and-means-an-unifying-perspective/
-;; https://towardsdatascience.com/on-average-youre-using-the-wrong-average-geometric-harmonic-means-in-data-analysis-2a703e21ea0
+;;> \subsection{Central Tendencies}
 
-;; arithmetic-mean, aka first moment, what people typically think
-;; of as the average
+;;> Central tendencies measure a central or typical value of a
+;;> distribution.  The arithmetic \scheme{mean},
+;;> \scheme{geometric-mean} and \scheme{harmonic-mean} are the three
+;;> classical Pythagorean means.  The \scheme{mean}, \scheme{median}
+;;> and \scheme{mode} can be unified as:
+;;>
+;;> \schemeblock{
+;;>  (mode xi)   => (argmin s (sum (expt (abs (- xi s)) 0)))
+;;>  (median xi) => (argmin s (sum (expt (abs (- xi s)) 1)))
+;;>  (mean xi)   => (argmin s (sum (expt (abs (- xi s)) 2)))}
+
+;;> \procedure{(mean dist [getter])}
+;;> Returns the arithmetic-mean, aka the first moment, what people
+;;> typically think of as the average.  As with other procedures in
+;;> this library, the computation should be numerically stable.
+;;>
+;;> \example{(mean '(1 2 3))}
+;;> \example{(mean '((a . 1) (b . 2) (c . 3)) cdr)}
+;;> \example{(mean (make-list 1000000 #i1/3))}
+;;> \example{(mean (normal-distribution 2.4 7))}
 (define mean
   (dist-dispatch statistics-mean statistics-mean-set! summary-mean seq-mean))
 
+;;> \procedure{(geometric-mean dist [getter])}
+;;> Returns the geometric mean, which is the central tendency based on
+;;> the product of the values, rather than the sum as in the
+;;> arithmetic mean.  In geometric terms, the geometric mean of two
+;;> numbers, a and b, is the length of one side of a square whose area
+;;> is equal to that of a rectangle with sides a and b.
+;;>
+;;> The \scheme{geometric-mean} is often used for numbers whose values
+;;> are exponential in nature, such as population growth or financial
+;;> investments.
 (define geometric-mean
   (dist-dispatch #f #f #f seq-geometric-mean))
 
-;; aka F1 score
+;;> \procedure{(harmonic-mean dist [getter])}
+;;> Returns the harmonic mean, aka the F-1 score, of the distribution.
+;;> This is the reciprocal of the arithmetic \scheme{mean} of the
+;;> reciprocals of the values.  The \scheme{harmonic-mean} is often
+;;> used in machine learning as an aggregated performance score over
+;;> other metrics (such as precision and recall), which penalizes a
+;;> single low score harder than the arithmetic or geometric means
+;;> would.
 (define harmonic-mean
   (dist-dispatch #f #f #f seq-harmonic-mean))
 
-;; aka root-mean-squared (RMS)
+;;> \procedure{(quadratic-mean dist [getter])}
+;;> Returns the quadratic mean of the distribution, aka the
+;;> root-mean-squared (RMS), which is the square root of the mean
+;;> square (the generalized mean with exponent 2).  The RMS of a
+;;> deviation or error (RMSE) is frequently used in machine learning
+;;> to evaluate the fitness of a model.
 (define quadratic-mean
   (dist-dispatch #f #f #f seq-quadratic-mean))
 
+;;> \procedure{(median dist [getter])}
+;;> Returns the median of a distribution, the 50th percentile or
+;;> "middle" value if the elements were sorted.
 (define median
   (dist-dispatch statistics-median statistics-median-set! #f seq-median))
 
+;;> \procedure{(mode dist [getter])}
+;;> Returns the mode, or most frequently occuring element of the
+;;> distribution.
 (define mode
   (dist-dispatch statistics-mode statistics-mode-set! #f seq-mode))
 
-;; aka second central moment
-(define variance
-  (dist-dispatch statistics-variance statistics-variance-set! summary-variance seq-variance))
+;;> \subsection{Central Moments}
 
+;;> \procedure{(variance dist [getter])}
+;;> Returns the variance, aka the second central moment, of a
+;;> distribution, defined as the expectation of the squared deviation
+;;> from the mean.  Variance is used extensively in descriptive and
+;;> inferential statistics.
+(define variance
+  (let ((sample-var (dist-dispatch statistics-variance statistics-variance-set! summary-variance seq-variance))
+        (pop-var (dist-dispatch statistics-variance statistics-variance-set! summary-variance seq-pop-variance)))
+    (lambda (dist . o)
+      (if (and (distribution? dist) (distribution-population? dist))
+          (apply pop-var dist o)
+          (apply sample-var dist o)))))
+
+;;> \procedure{(standard-deviation dist [getter])}
+;;> Returns the standard deviation, the square root of the
+;;> \scheme{variance}.  Unlike \scheme{variance} this is expressed in
+;;> the same unit as the data, and can thus be easier to reason about.
+;;> In particular, the 68-95-99.7 rule states that 68% of the
+;;> population is within 1 stdev of the mean, 95% within 2 stdevs, and
+;;> 99.7% within 3 stdevs.
+;;>
+;;> A simple form of outlier removal is to remove data points more
+;;> than 3 (or 4) standard deviations from the mean.
 (define (standard-deviation dist . o)
   (sqrt (apply variance dist o)))
 
+;;> \procedure{(stdev dist [getter])}
+;;> An alias for \scheme{standard-deviation}.
 (define stdev standard-deviation)
 
-(define maximum
-  (dist-dispatch statistics-maximum statistics-maximum-set! #f seq-maximum))
+;;> \procedure{(coefficient-of-variation dist [getter])}
+;;> Returns the coefficient of variation, aka the relative standard
+;;> deviation (RSD) of \var{dist}, the ratio of the
+;;> \scheme{standard-deviation} to the \scheme{mean}.
+(define (coefficient-of-variation dist . o)
+  (/ (apply stdev dist o) (apply mean dist o)))
 
-(define minimum
-  (dist-dispatch statistics-minimum statistics-minimum-set! #f seq-minimum))
-
-;; TODO: online percentile, parallel percentile
-(define (percentile seq n . o)
-  (let* ((less (if (pair? o) (car o) <))
-         (mean (if (and (pair? o) (pair? (cdr o)))
-                   (cadr o)
-                   (lambda (a b) (/ (+ a b) 2))))
-         (vec (if (vector? seq) (vector-copy seq) (list->vector seq)))
-         (len (vector-length vec))
-         (i (* len (/ n 100))))
-    (cond
-     ((zero? len) #f)
-     (else
-      (vector-separate! less vec (exact (floor i)))
-      (if (or (integer? i) (>= (+ i 1) len))
-          (vector-ref vec (exact (floor i)))
-          (mean (vector-ref vec (exact (floor i)))
-                (vector-ref vec (exact (floor (+ i 1))))))))))
-
-;; aka relative standard deviation (RSD)
-(define (coefficient-of-variation seq . o)
-  (let* ((mu (if (pair? o) (car o) (mean seq)))
-         (std (standard-deviation seq mu)))
-    (/ std mu)))
-
-(define (population-variance seq . o)
-  (if (distribution? seq)
-      (variance seq)
-      (let ((mu (if (pair? o) (car o) (mean seq))))
-        (/ (map-sum (lambda (x) (square (- x mu))) seq)
-           (seq-length seq)))))
-
-(define (population-standard-deviation seq . o)
-  (sqrt (apply population-variance seq o)))
-
-;; TODO: non-uniform probabilities
-(define (covariance seq1 seq2 . o)
-  (let ((mu1 (if (pair? o) (car o) (mean seq1)))
-        (mu2 (if (and (pair? o) (pair? (cdr o))) (cadr o) (mean seq2))))
+;;> \procedure{(covariance dist1 dist2 [getter1 [getter2]])}
+;;> Returns the covariance, a measure of the joint variability, of the
+;;> two (non-pure) distributions \var{dist1} and \var{dist2}.  The
+;;> sign of the covariance shows the tendency in the linear
+;;> relationship between the variables, though the magnitude is hard
+;;> to interpret.  For a better understanding of the strength of the
+;;> relation, use the \scheme{pearson-correlation}.
+(define (covariance dist1 dist2 . o)
+  (assert (not (distribution-pure? dist1))
+          (not (distribution-pure? dist2)))
+  ;; TODO: non-uniform probabilities
+  (let ((mu1 (apply mean dist1 o))
+        (mu2 (apply mean dist2 (if (pair? o) (cdr o) o))))
     (/ (seq-fold (lambda (sum elt1 elt2)
                    (+ sum (* (- elt1 mu1) (- elt2 mu2))))
                  0
-                 seq1
-                 seq2)
-       (- (seq-length seq1) 1))))
+                 (apply distribution-values dist1 o)
+                 (apply distribution-values dist2 (if (pair? o) (cdr o) o)))
+       (if (and (distribution? dist1) (distribution-population? dist1))
+           (size dist1)
+           (- (size dist1) 1)))))
 
-;; aka correlation coefficient
-(define (pearson-correlation seq1 seq2 . o)
-  (/ (apply covariance seq1 seq2 o)
-     (apply standard-deviation seq1 (if (pair? o) (list (car o)) '()))
-     (apply standard-deviation seq2 (if (pair? o) (cdr o) '()))))
+;;> \procedure{(pearson-correlation dist1 dist2 [getter1 [getter2]])}
+;;> Returns the Pearson correlation coefficient (PCC), aka Pearson's
+;;> r, the Pearson product-moment correlation coefficient (PPMCC), or
+;;> the bivariate correlation.  This is a value between [-1, 1]
+;;> showing the correlation between the two distributions \var{dist1}
+;;> and \var{dist2}, with positive values indicating a positive linear
+;;> correlation, negative values indicating a negative linear
+;;> correlation, and values close to zero indicating no correlation.
+(define (pearson-correlation dist1 dist2 . o)
+  (/ (apply covariance dist1 dist2 o)
+     (apply standard-deviation dist1 o)
+     (apply standard-deviation dist2 (if (pair? o) (cdr o) '()))))
 
-(define (spearman-rank-correlation seq1 seq2)
-  (let ((len (seq-length seq1))
-        (r1 (map-rank seq1 <))
-        (r2 (map-rank seq2 <)))
+;;> \procedure{(spearman-rank-correlation dist1 dist2 [getter1 [getter2]])}
+;;> Returns the Spearman's rank correlation coefficient, aka
+;;> Spearman's ρ.  This is the \scheme{pearson-correlation} between
+;;> the rank variables of \var{dist1} and \var{dist2}, indicating how
+;;> well their relationship can be described by a monotonic function.
+(define (spearman-rank-correlation dist1 dist2)
+  (assert (not (distribution-pure? dist1))
+          (not (distribution-pure? dist2)))
+  (let ((r1 (map-rank dist1 <))
+        (r2 (map-rank dist2 <)))
     (if (and (every exact-integer? r1)
              (every exact-integer? r2))
-        (- 1 (/ (* 6 (square-sum (seq-map - r1 r2)))
-                (* len (- (square len) 1))))
+        ;; shortcut when there are no ties
+        (let ((len (size dist1)))
+          (- 1 (/ (* 6 (square-sum (seq-map - r1 r2)))
+                  (* len (- (square len) 1)))))
         (pearson-correlation r1 r2))))
 
-;; aka third central moment, the lopsidedness of the distribution
-(define (skewness seq . o)
-  (let* ((mu (if (pair? o) (car o) (mean seq)))
-         (s3 (cube (standard-deviation seq mu))))
-    (/ (map-sum (lambda (x) (cube (- x mu))) seq)
-       (seq-length seq)
-       s3)))
+;;> \procedure{(skewness dist [getter])}
+;;> Returns the skewness, aka the third standardized moment, of
+;;> \var{dist}, which indicates the lopsidedness of the distribution.
+;;> For a unimodal distribution, negative skew indicates the tail is
+;;> to the left of the mode, and positive skew indicates it is to the
+;;> right.  Zero skew indicates the tails balance out, though may not
+;;> be symmetric.
+(define skewness
+  (dist-dispatch statistics-skew statistics-skew-set! #f seq-skew))
 
-;; aka fourth central moment, the heaviness of the tail
-(define (kurtosis seq . o)
-  (let* ((mu (if (pair? o) (car o) (mean seq)))
-         (s4 (tesseract (standard-deviation seq mu))))
-    (/ (map-sum (lambda (x) (tesseract (- x mu))) seq)
-       (seq-length seq)
-       s4)))
+;;> \procedure{(kurtosis dist [getter])}
+;;> Returns the kurtosis, aka the fourth standardizes moment, of
+;;> \var{dist}, indicating the heaviness of the tail.  A
+;;> \scheme{kurtosis} less than 3 is called "platykurtic", suggesting
+;;> the distribution is flat or has fewer extremes than a normal
+;;> distribution, whereas a \scheme{kurtosis} greater than 3 is called
+;;> "leptokurtic", and has more outliers than a normal distribution.
+(define kurtosis
+  (dist-dispatch statistics-kurtosis statistics-kurtosis-set! #f seq-kurtosis))
 
-(define (excess-kurtosis seq . o)
-  (- (apply kurtosis seq o) 3))
+;;> \procedure{(excess-kurtosis dist [getter])}
+;;> Returns the excess kurtosis, aka Pearson's kurtosis, of
+;;> \var{dist}.  The \scheme{kurtosis} of any normal distribution is
+;;> 3, so this is defined as the kurtosis minus 3.
+(define (excess-kurtosis dist . o)
+  (- (apply kurtosis dist o) 3))
 
 ;; TODO: coskewness and cokurtosis
 
+;;> \subsection{Rank Statistics}
+
+;;> \procedure{(maximum dist [getter])}
+;;> Returns the maximum value of \var{dist}.
+(define maximum
+  (dist-dispatch statistics-maximum statistics-maximum-set! #f seq-maximum))
+
+;;> \procedure{(minimum dist [getter])}
+;;> Returns the minimum value of \var{dist}.
+(define minimum
+  (dist-dispatch statistics-minimum statistics-minimum-set! #f seq-minimum))
+
+;;> \procedure{(percentile dist n [getter])}
+;;> Returns the \var{n}th percentile of \var{dist}.  If \var{dist} is
+;;> non-pure and the rank doesn't fall on an exact position, uses
+;;> linear interpolation between adjacent ranks, which produces better
+;;> results for small samples.
+(define (percentile dist n . o)
+  ;; TODO: online percentile, parallel percentile
+  (define (vector-min vec start)
+    (let lp ((i (+ start 1))
+             (lo (vector-ref vec start)))
+      (if (= i (vector-length vec))
+          lo
+          (lp (+ i 1) (min lo (vector-ref vec i))))))
+  (cond
+   ((distribution-pure? dist)
+    ((inverse-transform-cdf (distribution-cdf dist)
+                            (distribution-statistics dist))
+     (/ n 100.)))
+   ((and (distribution? dist)
+         (distribution-summary dist)
+         (histogram? (summary-density (distribution-summary dist))))
+    (histogram-quantile (summary-density (distribution-summary dist))
+                        (/ n 100.)))
+   (else
+    (let* ((seq (apply distribution-values dist o))
+           (less (if (pair? o) (car o) <))
+           (mean (if (and (pair? o) (pair? (cdr o)))
+                     (cadr o)
+                     (lambda (a b) (/ (+ a b) 2))))
+           (vec (if (vector? seq) (vector-copy seq) (list->vector seq)))
+           (len (vector-length vec))
+           (i (* (- len 1) (/ n 100))))
+      (cond
+       ((zero? len) #f)
+       (else
+        (let ((i_ (exact (floor i))))
+          ;; TODO: cache the sorted values
+          (vector-separate! less vec i_)
+          (if (or (integer? i) (>= (+ i 1) len))
+              (vector-ref vec i_)
+              (let ((xi (vector-ref vec i_))
+                    (xi+1 (vector-min vec (+ i_ 1))))
+                (+ (* (- (+ i_ 1) i) xi)
+                   (* (- i i_) xi+1)))))))))))
+
+;;> \procedure{(rank ls [getter])}
+;;> Ranks a sorted list (x1 x2 ... xn) returning
+;;>   \schemeblock{((rank1 . x1) (rank2 . x2) ... xn)}
+;;> where the ranks are 1..n if there all xi are unique,
+;;> otherwise the average rank among equal elements.
+(define (rank ls . o)
+  (if (null? ls)
+      '()
+      (let ((less (if (pair? o) (car o) <))
+            (get-key (if (and (pair? o) (pair? (cdr o))) (cadr o) values)))
+        (let lp ((ls (cdr ls))
+                 (cur (list (cons 1 (car ls))))
+                 (key (get-key (car ls)))
+                 (i 2)
+                 (res '()))
+          (define (collect)
+            (let ((r (mean cur car)))
+              (append-reverse (map (lambda (x) (cons r (cdr x))) cur) res)))
+          (if (null? ls)
+              (reverse (collect))
+              (let ((key2 (get-key (car ls))))
+                (cond
+                 ((less key key2)
+                  (lp (cdr ls)
+                      (list (cons i (car ls)))
+                      key2
+                      (+ i 1)
+                      (collect)))
+                 ((less key2 key)
+                  (error "rank: lists must be sorted"))
+                 (else  ;; equal
+                  (lp (cdr ls)
+                      (cons (cons i (car ls)) cur)
+                      key
+                      (+ i 1)
+                      res)))))))))
+
+;;> Returns a new list with the elements replaced by their rank.
+(define (map-rank dist . o)
+  (let* ((less (if (pair? o) (car o) <))
+         (get-key (if (and (pair? o) (pair? (cdr o))) (cadr o) values))
+         (get-key2 (lambda (x) (get-key (car x))))
+         (seq (distribution-values dist))
+         (len (seq-length seq))
+         (indexed (map cons
+                       (if (vector? seq) (vector->list seq) seq)
+                       (iota len)))
+         (ordered (sort indexed less get-key2))
+         (ranked (rank ordered less get-key2))
+         (res (make-vector len)))
+    (do ((ls ranked (cdr ls)))
+        ((null? ls)
+         (if (vector? seq) res (vector->list res)))
+      (vector-set! res (cdr (cdar ls)) (caar ls)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Similarity
+;;> \section{Sampling}
 
-(define (intersection-size seq1 seq2 . o)
-  (let ((s (seq-fold (lambda (set elt) (set-adjoin! set elt))
-                     (set (if (pair? o) (car o) the-equal-comparator))
-                     seq1)))
-    (seq-fold (lambda (n elt)
-                (if (set-contains? s elt)
-                    (+ n 1)
-                    n))
-              0
-              seq2)))
-
-;; similarity measure, intersection/union in [0, 1]
-(define (jaccard-index seq1 seq2 . o)
-  (let* ((intersect-size
-          (apply intersection-size seq1 seq2 o))
-         (union-size (- (+ (seq-length seq1)
-                           (seq-length seq2))
-                        intersect-size)))
-    (/ intersect-size
-       union-size)))
-
-(define (jaccard-distance seq1 seq2 . o)
-  (- 1 (apply jaccard-index seq1 seq2 o)))
-
-;; Sørensen, aka Czekanowski's binary index, Zijdenbos similarity index.
-;; Unlike Jaccard, is not a proper distance metric (doesn't satisfy
-;; triangle inequality)
-(define (sorenson-dice-index seq1 seq2 . o)
-  (/ (* 2 (apply intersection-size seq1 seq2 o))
-     (+ (seq-length seq1)
-        (seq-length seq2))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Sampling
-
+;;> Returns a random flip of a weighted coin, i.e. runs a Bernoulli
+;;> trial, returning \scheme{#t} with probability \var{p} (default
+;;> 0.5) and \scheme{#f} otherwise.
 (define (flip? . o)
-  (< (random-real) (if (pair? o) (car o) 0.5)))
+  (let ((p (if (pair? o) (car o) 0.5)))
+    (< (random-real) p)))
 
+;;> Returns a random value from distribution \var{dist}.
 (define (random-pick dist)
   (seq-ref (random-sample 1 dist) 0))
 
+;;> Returns a sequence of \var{n} random value from distribution
+;;> \var{dist}.  If \var{dist} is a list or distribution based on one
+;;> the result is a list, otherwise it's a vector.
 (define (random-sample n dist . o)
   (if (distribution-pure? dist)
       (let ((res (make-vector n)))
@@ -1207,7 +1077,7 @@
       (vector-set! res (- n 1) last)
       res)))
 
-;; with replacement
+;;> Like \scheme{random-sample}, but returns a sample with replacement.
 (define (random-multi-sample n x . o)
   ;; Alias method by A.J. Walker ("New fast method for generating
   ;; discrete random numbers with arbitrary frequency distributions,"
@@ -1221,13 +1091,13 @@
   ;; probabilities (including indirect probabilities via aliasing)
   ;; should be equal to the original probability.
   (cond
-   ((distribution? x)
+   ((distribution-pure? x)
     (let ((res (make-vector n)))
       (do ((i 0 (+ i 1)))
           ((= i n) res)
         (vector-set! res i ((distribution-random x))))))
    (else
-    (let* ((seq x)
+    (let* ((seq (distribution-values x))
            (get-weight (cond ((null? o)
                               (lambda (x) 1))
                              ((hash-table? (car o))
@@ -1250,32 +1120,30 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sample size estimates
 
-;;> (min-sample-size num-total [conf err p])
+;;> \procedure{(min-sample-size num-total [conf err p])}
 ;;>
 ;;> Compute the minimum sample size for a population num-total, with
 ;;> the given confidence, error bound requirements, and population
 ;;> proportion.
 ;;>
-;;> num-total: total population size
+;;> \itemlist[
+;;> \item{num-total: total population size
 ;;>            (+inf.0 uses the normal approximation to binomial dist, otherwise
-;;>             we use the normal approximation to the hypergeometric dist)
-;;> conf: desired level of confidence, default 1.96 (95%)
-;;> err: desired error bounds, default 3%
-;;> p: population proportion, default 0.5
+;;>             we use the normal approximation to the hypergeometric dist)}
+;;> \item{conf: desired level of confidence, default 1.96 (95%)}
+;;> \item{err: desired error bounds, default 3%}
+;;> \item{p: population proportion, default 0.5}
+;;> ]
 ;;>
 ;;> For example, assume you want a 99% confidence (conf: 2.75) that the
 ;;> result is within 1%, then:
 ;;>
-;;>   (min-sample-size +inf.0 2.75 0.01) => 18906.25
+;;>   \example{(min-sample-size +inf.0 2.75 0.01)}
 ;;>
 ;;> however if you know the total population the required size may be
 ;;> smaller (but never larger):
 ;;>
-;;>   (min-sample-size 73015 2.75 0.01)  => 15017.80
-;;>
-;;> Details:
-;;> http://uregina.ca/~morrisev/Sociology/Sampling%20from%20small%20populations.htm
-
+;;>   \example{(min-sample-size 73015 2.75 0.01)}
 (define (min-sample-size num-total . o)
   (let* ((conf (if (pair? o) (car o) 1.96))
          (o (if (pair? o) (cdr o) o))
@@ -1289,7 +1157,9 @@
            (+ (* err err (- num-total 1)) (* conf conf p q))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Hypothesis testing
+;;> \section{Inferential Statistics}
+
+;;> \subsection{Hypothesis Testing}
 
 ;; requires knowing the mean and stdev of the population
 (define (standard-score x mu . o)
@@ -1319,7 +1189,7 @@
 (define (z-statistic sample dist)
   (if (not (eq? 'normal (distribution-name dist)))
       (error "z-statistic expected a normal distribution" dist))
-  (* (sqrt (count sample))
+  (* (sqrt (size sample))
      (standard-score (mean sample) (mean dist) (variance dist))))
 
 ;;> AKA the Student's t-test, after the pen name "Student" used by
@@ -1360,14 +1230,14 @@
    ((distribution-pure? dist2)
     (/ (- (mean dist1) (mean dist2))
        (/ (standard-deviation dist1)
-          (sqrt (count dist1)))))
+          (sqrt (size dist1)))))
    (else
     (let* ((m1 (mean dist1))
            (m2 (mean dist2))
            (s1 (standard-deviation dist1))
            (s2 (standard-deviation dist2))
-           (n1 (count dist1))
-           (n2 (count dist2)))
+           (n1 (size dist1))
+           (n2 (size dist2)))
       (if (< 1/2 (/ s1 s2) 2)
           (/ (- m1 m2)
              (* (harmonic-mean n1 n2)
@@ -1392,14 +1262,14 @@
         (error "comparing two pure distributions" dist1 dist2)
         (t-df dist2 dist1)))
    ((distribution-pure? dist2)
-    (- (count dist1) 1))
+    (- (size dist1) 1))
    (else
     (let* ((s1 (standard-deviation dist1))
            (s2 (standard-deviation dist2))
            (s1^2 (square s1))
            (s2^2 (square s2))
-           (n1 (count dist1))
-           (n2 (count dist2)))
+           (n1 (size dist1))
+           (n2 (size dist2)))
       (if (< 1/2 (/ s1 s2) 2)
           (+ n1 n2 -2)
           ;; aka the Welch–Satterthwaite equation
@@ -1433,11 +1303,28 @@
                    (distribution-values expected))))
       (proc ob ex))))
 
-;; Pearson's chi-squared test.
-;;
-;; It involes binning the results and comparing the frequencies with
-;; the expected frequencies of a theoretical distribution or the
-;; observed frequencies of another sample.
+;;> Performs Pearson's chi-squared test (χ²) to determine the
+;;> goodness of fit between the \var{observed} and \var{expected}
+;;> distributions.  Returns the p-value.
+(define (chi^2-test observed expected)
+  (if (real? expected)
+      (let ((stat observed)
+            (df expected))
+        (- 1
+           (lower-incomplete-gamma
+            (/ df 2)
+            (/ stat 2))))
+      (chi^2-test (chi^2-statistic observed expected)
+                  (chi^2-df observed))))
+
+;;> Returns \scheme{#t} iff the p-value from \scheme{chi^2-test} is
+;;> less than \var{alpha}, default 0.05.
+(define (chi^2-test? observed expected . o)
+  (let ((alpha (if (pair? o) (car o) 0.05)))
+    (< (chi^2-test observed expected) alpha)))
+
+;;> \procedure{(chi^2-statistic observed expected)}
+;;> Returns the underlying chi^2 statistic for \scheme{chi^2-test}.
 (define chi^2-statistic
   (paired-dispatch
    (lambda (observed expected)
@@ -1445,29 +1332,34 @@
               observed
               expected))))
 
-;; goodness of fit - test difference from theoretical dist
+;;> Returns the degrees of freedom for a chi^2 goodness of fit test
+;;> (as well as g-test).
 (define (chi^2-df observed . o)
   (let ((params (if (pair? o) (car o) 1)))
-    (- (count observed) params)))
-
-(define (chi^2-test stat df)
-  (if (real? stat)
-      (- 1
-         (lower-incomplete-gamma
-          (/ df 2)
-          (/ stat 2)))
-      (let ((observed stat)
-            (expected df))
-        (chi^2-test (chi^2-statistic observed expected)
-                    (chi^2-df observed)))))
-
-(define (chi^2-test? observed expected . o)
-  (let ((alpha (if (pair? o) (car o) 0.05)))
-    (< (chi^2-test observed expected) alpha)))
+    (- (size observed) params)))
 
 ;; TODO: homogeneity and independence tests
 ;; (i.e. chi-squared over a contingency table)
 
+;;> Performs a G-test for goodness of fit between the \var{observed}
+;;> and \var{expected} distributions, which performs better than the
+;;> chi^2 test in many cases.  Returns the p-value.
+(define (g-test observed expected)
+  (if (real? observed)
+      (let ((stat observed)
+            (df expected))
+        (chi^2-test stat df))
+      (g-test (g-statistic observed expected)
+              (chi^2-df observed))))
+
+;;> Returns \scheme{#t} iff the p-value from \scheme{g-test} is less
+;;> than \var{alpha}, default 0.05.
+(define (g-test? observed expected . o)
+  (let ((alpha (if (pair? o) (car o) 0.05)))
+    (< (g-test observed expected) alpha)))
+
+;;> \procedure{(g-statistic observed expected)}
+;;> Returns the underlying statistic the for \scheme{g-test}.
 (define g-statistic
   (paired-dispatch
    (lambda (observed expected)
@@ -1475,21 +1367,13 @@
                    observed
                    expected)))))
 
-(define (g-test stat df)
-  (if (real? stat)
-      (chi^2-test stat df)
-      (let ((observed stat)
-            (expected df))
-        (g-test (g-statistic observed expected)
-                (chi^2-df observed)))))
-
-(define (g-test? observed expected . o)
-  (let ((alpha (if (pair? o) (car o) 0.05)))
-    (< (g-test observed expected) alpha)))
-
+;;> Performs a binomial test that the \var{observed} distribution
+;;> matches the \var{expected}.  This is more accurate than the
+;;> \scheme{chi^2-test} and \scheme{g-test} when there are few values.
+;;> Returns the p-value.
 (define (binomial-test observed expected . o)
   (let* ((tails (if (pair? o) (car o) 1))
-         (n (count observed))
+         (n (size observed))
          (successes (* n (mean observed)))
          (p (mean expected))
          (cdf (distribution-cdf (binomial-distribution n p))))
@@ -1501,15 +1385,16 @@
              (cdf alt)))
         (- 1 (cdf successes)))))
 
+;;> Returns \scheme{#t} iff the p-value from \scheme{binomial-test} is
+;;> less than \var{alpha}, default 0.05.
 (define (binomial-test? observed expected . o)
   (let ((tails (if (pair? o) (car o) 1))
         (alpha (if (and (pair? o) (pair? (cdr o))) (cadr o) 0.05)))
     (< (binomial-test observed expected tails) alpha)))
 
-;; Adapted from Evaluating Kolmogorov's Distribution,
-;; George Marsaglia, Wai Wan Tsang, Jingbo Wang
-;; https://www.jstatsoft.org/article/view/v008i18
 (define (kolmogorov-cdf n d)
+  ;; Adapted from Evaluating Kolmogorov's Distribution, George
+  ;; Marsaglia, Wai Wan Tsang, Jingbo Wang in the references.
   (let* ((k (exact (truncate (+ 1 (* n d)))))
          (m (- (* 2 k) 1))
          (h (- k (* n d)))
@@ -1597,6 +1482,34 @@
                       (lp (+ i 1) (* s 1e140) (- eQ 140))
                       (lp (+ i 1) s eQ)))))))))))
 
+;;> Performs a Kolmogorov Smirnoff test between \var{dist1} and \var{dist2}.
+(define (kolmogorov-smirnoff-test dist1 dist2 . o)
+  (let* ((strict? (and (pair? o) (car o)))
+         (seq1 (distribution-values dist1))
+         (seq2 (distribution-values dist2))
+         (d (kolmogorov-smirnoff-statistic seq1 seq2))
+         (m (seq-length seq1))
+         (n (seq-length seq2)))
+    (if (< (* m n) 10000)
+        ;; exact
+        (- 1 (/ (lattice-paths m n m n (integrate-d d m n) strict?)
+                (combinations (+ n m) m)))
+        ;; approx for large tests
+        (- 1 (kolmogorov-smirnoff-sum (* d (sqrt (/ (* m n) (+ m n))))
+                                      ks-sum-cauchy-criterion
+                                      maximum-partial-sum-count)))))
+
+;;> Returns \scheme{#t} iff the \scheme{kolmogorov-smirnoff-test}
+;;> value between \var{dist1} and \var{dist2} is greater than the
+;;> \scheme{kolmogorov-smirnoff-critical} value.
+(define (kolmogorov-smirnoff-test? dist1 dist2 . o)
+  (let* ((strict? (and (pair? o) (car o)))
+         (alpha (if (pair? o) (car o) 0.05)))
+    (> (kolmogorov-smirnoff-test dist1 dist2 strict?)
+       (kolmogorov-smirnoff-critical (size dist1) (size dist2) alpha))))
+
+;;> Returns the underlying statistic for the
+;;> \scheme{kolmogorov-smirnoff-test}.
 (define (kolmogorov-smirnoff-statistic dist1 dist2)
   (when (or (distribution-pure? dist1) (distribution-pure? dist2))
     (error "single sample kolmogorov-smirnoff not yet supported" dist1 dist2))
@@ -1688,22 +1601,8 @@
                                 (+ last (vector-ref lag (- l 1)))))
                 (lp2 (+ l 1) (vector-ref lag (- l 1)) )))))))))
 
-(define (kolmogorov-smirnoff-test dist1 dist2 . o)
-  (let* ((strict? (and (pair? o) (car o)))
-         (seq1 (distribution-values dist1))
-         (seq2 (distribution-values dist2))
-         (d (kolmogorov-smirnoff-statistic seq1 seq2))
-         (m (seq-length seq1))
-         (n (seq-length seq2)))
-    (if (< (* m n) 10000)
-        ;; exact
-        (- 1 (/ (lattice-paths m n m n (integrate-d d m n) strict?)
-                (combinations (+ n m) m)))
-        ;; approx for large tests
-        (- 1 (kolmogorov-smirnoff-sum (* d (sqrt (/ (* m n) (+ m n))))
-                                      ks-sum-cauchy-criterion
-                                      maximum-partial-sum-count)))))
-
+;; Returns the critical value for the
+;; \scheme{kolmogorov-smirnoff-test?}.
 (define (kolmogorov-smirnoff-critical n m . o)
   (let ((alpha (if (pair? o) (car o) 0.05)))
     (sqrt (/  (* -1/2
@@ -1711,71 +1610,27 @@
                  (+ 1 (/ n m)))
               n))))
 
-(define (kolmogorov-smirnoff-test? dist1 dist2 . o)
-  (let* ((strict? (and (pair? o) (car o)))
-         (alpha (if (pair? o) (car o) 0.05)))
-    (> (kolmogorov-smirnoff-test dist1 dist2 strict?)
-       (kolmogorov-smirnoff-critical (count dist1) (count dist2) alpha))))
+;; TODO: wilcoxon-test returning p-value
 
-;;> Ranks a sorted list (x1 x2 ... xn) returning
-;;>   ((rank1 . x1) (rank2 . x2) ... xn)
-;;> where the ranks are 1..n if there all xi are unique,
-;;> otherwise the average rank among equal elements.
-(define (rank ls . o)
-  (if (null? ls)
-      '()
-      (let ((less (if (pair? o) (car o) <))
-            (get-key (if (and (pair? o) (pair? (cdr o))) (cadr o) values)))
-        (let lp ((ls (cdr ls))
-                 (cur (list (cons 1 (car ls))))
-                 (key (get-key (car ls)))
-                 (i 2)
-                 (res '()))
-          (define (collect)
-            (let ((r (mean cur car)))
-              (append-reverse (map (lambda (x) (cons r (cdr x))) cur) res)))
-          (if (null? ls)
-              (reverse (collect))
-              (let ((key2 (get-key (car ls))))
-                (cond
-                 ((less key key2)
-                  (lp (cdr ls)
-                      (list (cons i (car ls)))
-                      key2
-                      (+ i 1)
-                      (collect)))
-                 ((less key2 key)
-                  (error "rank: lists must be sorted"))
-                 (else  ;; equal
-                  (lp (cdr ls)
-                      (cons (cons i (car ls)) cur)
-                      key
-                      (+ i 1)
-                      res)))))))))
+;;> Performs a Wilcoxon signed ranked test to determine whether the
+;;> mean ranks of \var{dist1} and \var{dist2} differ.  It can be used
+;;> as an alternative to the \scheme{t-test} when the distributions
+;;> can't be assumed to be normal.
+(define (wilcoxon-test? dist1 dist2 . o)
+  (let* ((tails (if (pair? o) (car o) 1))
+         (alpha (if (and (pair? o) (pair? (cdr o))) (cadr o) .05)))
+    (call-with-values (lambda () (wilcoxon-statistic dist1 dist2))
+      (lambda (w nr)
+        (if (< nr 10)
+            (< (abs w) (wilcoxon-critical nr tails alpha))
+            (> (/ w (sqrt (* nr (+ nr 1) (+ (* nr 2) 1) 1/6)))
+               (wilcoxon-critical nr tails alpha)))))))
 
-;;> Returns a new list with the elements replaced by their rank.
-(define (map-rank seq . o)
-  (let* ((less (if (pair? o) (car o) <))
-         (get-key (if (and (pair? o) (pair? (cdr o))) (cadr o) values))
-         (get-key2 (lambda (x) (get-key (car x))))
-         (len (seq-length seq))
-         (indexed (map cons
-                       (if (vector? seq) (vector->list seq) seq)
-                       (iota len)))
-         (ordered (sort indexed less get-key2))
-         (ranked (rank ordered less get-key2))
-         (res (make-vector len)))
-    (do ((ls ranked (cdr ls)))
-        ((null? ls)
-         (if (vector? seq) res (vector->list res)))
-      (vector-set! res (cdr (cdar ls)) (caar ls)))))
-
-;;> Wilcoxon signed ranked test.
-;; (see Mann-Whitney-Wilcoxon for 2 indep samples)
-;; (see sign test to remove symmetric assumption)
-;; (consider modification by Pratt to incorporate zero diffs)
-
+;;> Returns the underlying statistic for the \scheme{wilcoxon-test?}.
 (define (wilcoxon-statistic dist1 dist2)
+  ;; (see Mann-Whitney-Wilcoxon for 2 indep samples)
+  ;; (see sign test to remove symmetric assumption)
+  ;; (consider modification by Pratt to incorporate zero diffs)
   (assert (not (distribution-pure? dist1)) (not (distribution-pure? dist2)))
   (let* ((seq1 (distribution-values dist1))
          (seq2 (distribution-values dist2))
@@ -1800,6 +1655,8 @@
             (values (map-sum (lambda (r) (* (car r) (cddr r))) ranked)
                     nr))))))
 
+;;> Returns the critical value for comparison against the statistic in
+;;> the \scheme{wilcoxon-test?}.
 (define (wilcoxon-critical nr tails alpha)
   (let ((alpha (if (= tails 1) (* alpha 2) alpha)))
     (if (< nr 10)
@@ -1818,21 +1675,27 @@
               (error "wilcoxon critical table incomplete" nr)))
         (inverse-normal-cdf (- 1 alpha)))))
 
-;; TODO: wilcoxon-test returning p-value
-
-(define (wilcoxon-test? dist1 dist2 . o)
-  (let* ((tails (if (pair? o) (car o) 1))
-         (alpha (if (and (pair? o) (pair? (cdr o))) (cadr o) .05)))
-    (call-with-values (lambda () (wilcoxon-statistic dist1 dist2))
-      (lambda (w nr)
-        (if (< nr 10)
-            (< (abs w) (wilcoxon-critical nr tails alpha))
-            (> (/ w (sqrt (* nr (+ nr 1) (+ (* nr 2) 1) 1/6)))
-               (wilcoxon-critical nr tails alpha)))))))
-
 ;; anova
-;; TODO: two-way, include Error
+
+;;> Performs an f-test of equality of variance of the distributions.
+;;> Returns the p-value.
+(define (f-test seq-of-seqs)
+  (let* ((total-length
+          (fold (lambda (s acc) (+ (seq-length s) acc)) 0 seq-of-seqs))
+         (df-total (- total-length 1))
+         (df-between (- (seq-length seq-of-seqs) 1))
+         (df-within (- df-total df-between)))
+    (- 1 (f-cdf (f-statistic seq-of-seqs)
+                df-between df-within))))
+
+;;> Returns \scheme{#t} iff the \var{f-test} is less than \var{alpha}.
+(define (f-test? seq-of-seqs . o)
+  (let ((alpha (if (pair? o) (car o) 0.05)))
+    (< (f-test seq-of-seqs) alpha)))
+
+;;> Returns the underlying statistic for \scheme{f-test}.
 (define (f-statistic seq-of-seqs)
+  ;; TODO: two-way, include Error
   (let* ((total-length
           (fold (lambda (s acc) (+ (seq-length s) acc)) 0 seq-of-seqs))
          (cf (/ (square (fold (lambda (s acc) (+ (sum s) acc)) 0 seq-of-seqs))
@@ -1853,31 +1716,22 @@
          (within-ms (/ within-ss df-within)))
     (/ between-ms within-ms)))
 
-(define (f-test seq-of-seqs)
-  (let* ((total-length
-          (fold (lambda (s acc) (+ (seq-length s) acc)) 0 seq-of-seqs))
-         (df-total (- total-length 1))
-         (df-between (- (seq-length seq-of-seqs) 1))
-         (df-within (- df-total df-between)))
-    (- 1 (f-cdf (f-statistic seq-of-seqs)
-                df-between df-within))))
+;;> \subsection{Confidence Intervals}
 
-;; wilson's confidence interval (consider contuinity correction)
-
-(define (wilson-score-offset successes trials . o)
-  (let ((z (if (pair? o) (car o) 1.96)))
-    (* (/ z (+ trials (square z)))
-       (sqrt (+ (/ (* successes (- trials successes))
-                   trials)
-                (/ (square z) 4))))))
-
+;;> Returns the lower bound of the Wilson score interval, a binomial
+;;> proportion confidence interval.  This interval gives a better
+;;> understanding of the probability of success from a series of
+;;> Bernoulli trials than the raw ratio, which can be misleading for a
+;;> small number of trials.
 (define (wilson-lower-bound successes trials . o)
+  ;; TODO: consider contuinity correction
   (let* ((confidence (if (pair? o) (car o) 0.95))
          (z (inverse-normal-cdf confidence)))
     (- (/ (+ successes (/ (square z) 2))
           (+ trials (square z)))
        (wilson-score-offset successes trials z))))
 
+;;> Returns the upper bound of the Wilson score interval.
 (define (wilson-upper-bound successes trials . o)
   (let* ((confidence (if (pair? o) (car o) 0.95))
          (z (inverse-normal-cdf confidence)))
@@ -1885,11 +1739,71 @@
           (+ trials (square z)))
        (wilson-score-offset successes trials z))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; simple linear regression (ordinary least squares)
+;;> Returns the offset used in \scheme{wilson-lower-bound} and
+;;> \scheme{wilson-upper-bound}.
+(define (wilson-score-offset successes trials . o)
+  (let ((z (if (pair? o) (car o) 1.96)))
+    (* (/ z (+ trials (square z)))
+       (sqrt (+ (/ (* successes (- trials successes))
+                   trials)
+                (/ (square z) 4))))))
 
-;; Univariate case, just call it fit-line to distinguish from
-;; multivariate linear regression used in machine learning.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;> \section{Similarity}
+
+(define (intersection-size seq1 seq2 . o)
+  (let ((s (seq-fold (lambda (set elt) (set-adjoin! set elt))
+                     (set (if (pair? o) (car o) the-equal-comparator))
+                     seq1)))
+    (seq-fold (lambda (n elt)
+                (if (set-contains? s elt)
+                    (+ n 1)
+                    n))
+              0
+              seq2)))
+
+;;> A similarity measure, also known as the Jaccard similarity
+;;> coefficient, returns the size of the intersection of \var{seq1}
+;;> and \var{seq2} divided by the size of their union. The range is in
+;;> [0, 1], with 0 indicating no intersection and 1 indicating they
+;;> are the same sets.  Equality is determined by the comparator
+;;> \var{cmp}, defaulting to an \scheme{equal?} comparator.
+(define (jaccard-index dist1 dist2 . o)
+  (let* ((cmp (if (pair? o) (car o) the-equal-comparator))
+         (intersect-size (intersection-size (distribution-values dist1)
+                                            (distribution-values dist2)
+                                            cmp))
+         (union-size (- (+ (size dist1) (size dist2))
+                        intersect-size)))
+    (/ intersect-size
+       union-size)))
+
+;;> Returns the dissimilarity between \var{seq1} and \var{seq2}, this
+;;> is 1 - the index.
+(define (jaccard-distance dist1 dist2 . o)
+  (- 1 (apply jaccard-index dist1 dist2 o)))
+
+;;> The Sørensen-Dice coefficient, aka Czekanowski's binary index,
+;;> Zijdenbos similarity index.  Another similarity index, this is
+;;> essentially the set equivalent of the \scheme{harmonic-mean}.
+;;>
+;;> The corresponding distance function (subtracted from 1), unlike
+;;> Jaccard, is not a proper distance metric because it doesn't
+;;> satisfy the triangle inequality.
+(define (sorenson-dice-index seq1 seq2 . o)
+  (/ (* 2 (apply intersection-size seq1 seq2 o))
+     (+ (seq-length seq1)
+        (seq-length seq2))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;> \section{Simple Linear Regression}
+
+;;> Computes a simple linear regression using ordinary least squares
+;;> on the paired sequences \var{x} and \var{y} and returns two
+;;> values: the y-intercept and the slope of the line closest fitting
+;;> the points.  This is the univariate case and so simply called
+;;> \var{fit-line} to distinguish from the multivariate linear
+;;> regression used in machine learning.
 (define (fit-line x y)
   (let ((n (seq-length x)))
     (unless (= n (seq-length y))
@@ -1910,3 +1824,489 @@
            (sb (/ (* n se) (- (* n sxx) (square sx))))
            (sa (/ (* sb sxx) n)))
       (values b a))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;> \section{Utilities}
+
+;;> Returns \var{x} raised to the 3rd power.
+(define (cube x)
+  (* x x x))
+
+;;> Returns \var{x} raised to the 4th power.
+(define (tesseract x)
+  (* x x x x))
+
+;;> Returns the sign of \var{x}, either 0, 1 or -1.
+(define (sign x)
+  (cond
+   ((zero? x) 0)
+   ((positive? x) 1)
+   (else -1)))
+
+;;> Returns \var{n}! = 1*2*...*\var{n}.
+(define (factorial n)
+  (let fact ((n n) (res 1))
+    (if (<= n 1) res (fact (- n 1) (+ n res)))))
+
+;;> Returns the log of the gamma function applied to \var{x},
+;;> i.e. just the first value of \scheme{flloggamma} from SRFI 144.
+(define (loggamma x)
+  (call-with-values (lambda () (flloggamma x))
+    (lambda (res sign) res)))
+
+;;> Returns the regularized lower incomplete gamma, γ(\vars}, \var{z}.
+(define (lower-incomplete-gamma s z)
+  (let lp ((k 1) (x 1.0) (sum 1.0))
+    (if (or (= k 1000) (< (/ x sum) 1e-14))
+        (exp (+ (* s (log z))
+                (log sum)
+                (- z)
+                (- (loggamma (+ s 1.)))))
+        (let* ((x2 (* x (/ z (+ s k))))
+               (sum2 (+ sum x2)))
+          (lp (+ k 1) x2 sum2)))))
+
+;;> The probability distribution function for the beta distribution.
+(define (beta-pdf a b x)
+  (/ (* (expt x (- a 1))
+        (expt (- 1 x) (- b 1)))
+     (/ (* (flgamma a) (flgamma b))
+        (flgamma (+ a b)))))
+
+;;> Returns the incomplete beta function, Β(\var{a}, \var{b}).
+(define (beta a b . o)
+  (define epsilon 1e-30)
+  (define delta 1e-8)
+  (define limit 200)
+  (define (abs-max a b)
+    (if (< (abs a) (abs b)) b a))
+  (let ((x (if (pair? o) (car o) 1)))
+    (cond
+     ((= x 1)
+      (exp (+ (loggamma (inexact a))
+              (loggamma (inexact b))
+              (- (loggamma (inexact (+ a b)))))))
+     ((not (< 0 x 1))
+      +inf.0)
+     ((> x (/ (+ a 1) (+ a b 2)))
+      (- 1 (beta b a (- 1 x))))
+     (else
+      ;; Lentz's algorithm to solve the continued fraction.
+      (let lp ((i 0) (f 1) (c 1) (d 0))
+        (cond
+         ((>= i limit)
+          +inf.0)
+         ((< (abs (- 1 (* c d))) delta)
+          (* (/ (exp (+ (* a (log x))
+                        (* b (log (- 1 x)))
+                        (- (loggamma (inexact (+ a b)))
+                           (loggamma (inexact a))
+                           (loggamma (inexact b)))))
+                a)
+             (- f 1)))
+         (else
+          (let* ((m (quotient i 2))
+                 (num (cond ((zero? i) 1)
+                            ((even? i)
+                             (/ (* m (- b m) x)
+                                (* (+ a (* 2 m) -1)
+                                   (+ a (* 2 m)))))
+                            (else
+                             (- (/ (* (+ a m) (+ a b m) x)
+                                   (* (+ a (* 2 m))
+                                      (+ a (* 2 m) 1)))))))
+                 (c (abs-max (+ 1 (/ num c)) epsilon))
+                 (d (/ (abs-max (+ 1 (* num d)) epsilon))))
+            (lp (+ i 1) (* f c d) c d)))))))))
+
+;;> Returns the quantile function, or inverse distribution function,
+;;> for the given \var{cdf}, with \var{statistics} used to determine
+;;> the domain.
+(define (inverse-transform-cdf cdf statistics)
+  (define (finite-lower-bound f x lo)
+    (inexact
+     (if (finite? lo)
+         lo
+         (let lp ((lo -1)) (if (< (cdf lo) x) lo (lp (* lo 10)))))))
+  (define (finite-upper-bound f x hi)
+    (inexact
+     (if (finite? hi)
+         hi
+         (let lp ((hi 1)) (if (> (cdf hi) x) hi (lp (* hi 10)))))))
+  (lambda (x)
+    (let lp ((lo (finite-lower-bound cdf x (statistics-minimum statistics)))
+             (hi (finite-upper-bound cdf x (statistics-maximum statistics)))
+             (count 0))
+      (let* ((mid (/ (+ lo hi) 2))
+             (x^ (cdf mid)))
+        (cond
+         ((or (= x^ x) (> count 63)) mid)
+         ((< x^ x) (lp mid hi (+ count 1)))
+         (else (lp lo mid (+ count 1))))))))
+
+;;> Utility to return a random value matching a given \var{cdf}, with
+;;> \var{statistics} used to determine the domain.
+(define (inverse-transform-random cdf statistics)
+  (let ((inverse-cdf (inverse-transform-cdf cdf statistics)))
+    (lambda ()
+      (inverse-cdf (random-real)))))
+
+;;> Returns a procedure of one value which approximates the derivative
+;;> of \var{f}.
+(define (numeric-diff f)
+  (lambda (x) (/ (- (f (+ x .001)) (f (- x .001))) (* 2 .001))))
+
+;;> Also known as the binomial coefficient, returns the number of
+;;> combinations of \var{k} elements from a set of size \var{n}.
+(define (combinations n k)
+  (let lp ((n n) (num 1) (i 1) (den 1))
+    (if (> i k)
+        (/ num den)
+        (lp (- n 1) (* n num) (+ i 1) (* i den)))))
+
+;;> Returns the number of permutations of \var{k} ordered elements
+;;> from a set of size \var{n}.
+(define (permutations n k)
+  (* (combinations n k) (factorial k)))
+
+(define the-equal-comparator (make-equal-comparator))
+
+(define-record-type Running-Sum
+  (%make-running-sum sum compensation)
+  running-sum?
+  (sum running-sum-sum running-sum-sum-set!)
+  (compensation running-sum-compensation running-sum-compensation-set!))
+
+;;> Returns the sum of the elements of \var{seq}, which must be real.
+;;> This and all operations involving sums are numerically stable.
+;;> The current implementation uses Neumaier's variant of Kahan
+;;> summation.
+;;>
+;;> Examples:
+;;> \example{(sum (make-list 10000 (acos -1)))}
+;;> \example{(sum '#(1 1e100 1 -1e100))}
+(define (sum seq . o)
+  (if (pair? o)
+      (map-sum (car o) seq)
+      (if (vector? seq)
+          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
+            (if (negative? i)
+                (+ sum c)
+                (let* ((elt (vector-ref seq i))
+                       (t (+ sum elt)))
+                  (if (>= (abs sum) (abs elt))
+                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
+                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
+          (let lp ((ls seq) (sum 0) (c 0))
+            (if (null? ls)
+                (+ sum c)
+                (let* ((elt (car ls))
+                       (t (+ sum elt)))
+                  (if (>= (abs sum) (abs elt))
+                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
+                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
+
+;;> Like \scheme{sum} but sums the \scheme{square}s of the elements.
+(define (square-sum seq . o)
+  (if (pair? o)
+      (map-sum (lambda (x) (square ((car o) x))) seq)
+      (map-sum square seq)))
+
+;;> Like \scheme{sum} but sums the inverse (\scheme{/}) of the elements.
+(define (reciprocal-sum seq . o)
+  (if (pair? o)
+      (map-sum (lambda (x) (/ ((car o) x))) seq)
+      (map-sum (lambda (x) (/ x)) seq)))
+
+;;> Like \scheme{sum} but sums the \scheme{log} of the elements.
+(define (log-sum seq . o)
+  (if (pair? o)
+      (map-sum (lambda (x) (log ((car o) x))) seq)
+      (map-sum log seq)))
+
+;;> Generalized stable \scheme{sum}.  Applies \var{proc} to the
+;;> sequences and returns the sum of all the results.  It is an error
+;;> if the sequences don't all have the same length.
+(define (map-sum proc seq . o)
+  (if (pair? o)
+      ;; TODO: more than 2 seqs
+      (let ((len1 (seq-length seq))
+            (len2 (seq-length (car o))))
+        (unless (= len1 len2)
+          (error "sequences must have equal length" seq (car o)))
+        (do ((i 0 (+ i 1))
+             (res (make-running-sum)
+                  (let ((e1 (if (pair? seq1) (car seq1) (seq-ref seq i)))
+                        (e2 (if (pair? seq2) (car seq2) (seq-ref (car o) i))))
+                    (running-sum-inc! res (proc e1 e2))))
+             (seq1 seq (if (pair? seq1) (cdr seq1) '()))
+             (seq2 (car o) (if (pair? seq2) (cdr seq2) '())))
+            ((= i len1)
+             (running-sum-get res))))
+      (if (vector? seq)
+          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
+            (if (negative? i)
+                (+ sum c)
+                (let* ((elt (proc (vector-ref seq i)))
+                       (t (+ sum elt)))
+                  (if (>= (abs sum) (abs elt))
+                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
+                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
+          (let lp ((ls seq) (sum 0) (c 0))
+            (if (null? ls)
+                (+ sum c)
+                (let* ((elt (proc (car ls)))
+                       (t (+ sum elt)))
+                  (if (>= (abs sum) (abs elt))
+                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
+                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
+
+;;> Creates a new running-sum object initialized to \var{init},
+;;> defaulting to 0.  A running-sum allows you take compute a
+;;> numerically stable sum incrementally, so that it can be updated
+;;> over time or fed from a generator or other data structure, etc.
+(define (make-running-sum . o)
+  (let ((init (if (pair? o) (car o) 0)))
+    (%make-running-sum init 0)))
+
+;;> \procedure{(running-sum? x)}
+;;> Returns true iff \var{x} is a running-sum object.
+
+;;> Returns the current value of the running-sum \var{rs}.
+(define (running-sum-get rs)
+  (+ (running-sum-sum rs)
+     (running-sum-compensation rs)))
+
+;;> Adds \var{x} to the running-sum \var{rs}.
+(define (running-sum-inc! rs x)
+  (let* ((sum (running-sum-sum rs))
+         (t (+ sum x))
+         (c (running-sum-compensation rs)))
+    (if (>= (abs (running-sum-sum rs)) (abs x))
+        (running-sum-compensation-set! rs (+ c (+ (- sum t) x)))
+        (running-sum-compensation-set! rs (+ c (+ (- x t) sum))))
+    (running-sum-sum-set! rs t)
+    rs))
+
+;;> Subtracts \var{x} from the running-sum \var{rs}.
+(define (running-sum-dec! rs x)
+  (running-sum-inc! rs (- x)))
+
+;;> Returns the product of the elements in \var{seq}.  Multiplication
+;;> is stable so there is no need for error compensation.
+(define (product seq . o)
+  (if (pair? o)
+      (seq-fold (lambda (acc x) (* ((car o) x) acc)) 1 seq)
+      (seq-fold * 1 seq)))
+
+;;> The relative change from \var{x} to \var{y}, useful to answer the
+;;> question what percentage the gain (or loss) was.
+;;>
+;;> Examples:
+;;>
+;;> \example{(gain 50 60)}
+;;> \example{(gain 2/3 1)}
+;;> \example{(gain .75 .50)}
+(define (gain x y)
+  (if (zero? x)
+      y
+      (/ (- y x) x)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;> \section{Additional Data Structures}
+
+;;> We make use of reservoirs and histograms for summarizing
+;;> distributions.
+
+;;> \subsection{Reservoirs}
+
+;;> Returns a new reservoir, a random running sample of up to
+;;> \var{max-size} elements.  As new elements are added beyond
+;;> \var{max-size}, the elements are probabilistic replaced such that
+;;> the sample has the same distribution as if \scheme{random-sample}
+;;> was run on the full population.
+(define (make-reservoir max-size)
+  (%make-reservoir (make-vector (max max-size 128) #f) max-size 0))
+
+;;> Probabilistically adds \var{elt} to the reservoir \var{rv}.
+(define (reservoir-maybe-add! rv elt)
+  (cond
+   ((< (reservoir-count rv)
+       (vector-length (reservoir-elements rv)))
+    (vector-set! (reservoir-elements rv)
+                 (reservoir-count rv)
+                 elt))
+   ((< (reservoir-count rv)
+       (reservoir-max-size rv))
+    (let ((elts (make-vector
+                 (min (* 2 (vector-length (reservoir-elements rv)))
+                      (reservoir-max-size rv))
+                 #f)))
+      (vector-copy! elts 0 (reservoir-elements rv))
+      (vector-set! elts (reservoir-count rv) elt)
+      (reservoir-elements-set! rv elts)))
+   ((< (random-real)
+       (/ (reservoir-max-size rv) (reservoir-count rv)))
+    (vector-set! (reservoir-elements rv)
+                 (random-integer (reservoir-max-size rv))
+                 elt)))
+  (reservoir-count-set! rv (+ 1 (reservoir-count rv))))
+
+;;> Returns a vector containing the current elements of the reservoir
+;;> \var{rv}, which may share space with the underlying data structure.
+(define (reservoir->vector! rv)
+  (let ((elts (reservoir-elements rv))
+        (size (reservoir-count rv)))
+    (if (< count (vector-length elts))
+        (vector-copy elts 0 count)
+        elts)))
+
+;;> \subsection{Histograms}
+
+;; Trivial implementation based on:
+;;   http://jmlr.org/papers/volume11/ben-haim10a/ben-haim10a.pdf
+;; for more sophisticated techniques see:
+;;   http://www.mathcs.emory.edu/~cheung/papers/StreamDB/Histogram/2005-Guha-Histogram.pdf
+
+;;> Returns a new empty histogram for describing a distribution using
+;;> up to \var{max-bins} bins.
+(define (make-histogram . o)
+  (let ((max-bins (if (pair? o) (car o) 100)))
+    (%make-histogram '() max-bins 0)))
+
+;;> \procedure{(histogram? x)}
+;;> Returns \scheme{#t} iff \var{x} is a histogram.
+
+;;> Adds an element to a histogram.
+(define (histogram-add! hist elt)
+  (histogram-count-set! hist (+ 1 (histogram-count hist)))
+  (cond
+   ((null? (histogram-bins hist))
+    (histogram-bins-set! hist (list (cons elt 1))))
+   ((< elt (caar (histogram-bins hist)))
+    (histogram-bins-set! hist (cons (cons elt 1) (histogram-bins hist)))
+    (histogram-trim! hist))
+   (else
+    (let lp ((ls (histogram-bins hist)))
+      (cond
+       ((= elt (caar ls))
+        (set-cdr! (car ls) (+ 1 (cdar ls))))
+       ((or (null? (cdr ls)) (< elt (caar (cdr ls))))
+        (set-cdr! ls (cons (cons elt 1) (cdr ls)))
+        (histogram-trim! hist))
+       (else
+        (lp (cdr ls))))))))
+
+;;> Returns a new histogram summarizing the elements of list \var{ls}.
+(define (list->histogram ls . o)
+  (let* ((max-bins (if (pair? o) (car o) 100))
+         (res (make-histogram max-bins)))
+    (for-each (lambda (x) (histogram-add! res x)) ls)
+    res))
+
+;;> Returns a new histogram summarizing the elements of vector \var{vec}.
+(define (vector->histogram vec . o)
+  (let* ((max-bins (if (pair? o) (car o) 100))
+         (res (make-histogram max-bins)))
+    (vector-for-each (lambda (x) (histogram-add! res x)) vec)
+    res))
+
+(define (histogram-trim! hist)
+  (define (assoc-closest ls)
+    (let lp ((ls ls) (closest ls) (diff +inf.0))
+      (if (or (null? ls) (null? (cdr ls)))
+          closest
+          (let ((diff2 (abs (- (caar ls) (caar (cdr ls))))))
+            (if (< diff2 diff)
+                (lp (cdr ls) ls diff2)
+                (lp (cdr ls) closest diff))))))
+  (when (> (length (histogram-bins hist)) (histogram-max-bins hist))
+    (let* ((ls (assoc-closest (histogram-bins hist)))
+           (a (car ls))
+           (b (cadr ls))
+           (total (+ (cdr a) (cdr b)))
+           (avg (/ (+ (* (car a) (cdr a)) (* (car b) (cdr b))) total)))
+      (set-car! ls (cons avg total))
+      (set-cdr! ls (cddr ls)))))
+
+;;> Returns the smallest value seen by the histogram \var{hist}.
+(define (histogram-min hist)
+  (caar (histogram-bins hist)))
+
+;;> Returns the largest value seen by the histogram \var{hist}.
+(define (histogram-max hist)
+  (car (last (histogram-bins hist))))
+
+(define (histogram-scale hist . o)
+  (if (null? (histogram-bins hist))
+      '#()
+      (let* ((num-bins (if (pair? o) (car o) (length (histogram-bins hist))))
+             (o (if (pair? o) (cdr o) '()))
+             (lo (if (pair? o) (car o) (histogram-min hist)))
+             (o (if (pair? o) (cdr o) '()))
+             (hi (if (pair? o) (car o) (histogram-max hist)))
+             (width (/ (- hi lo) num-bins))
+             (res (make-vector num-bins 0)))
+        (do ((ls (histogram-bins hist) (cdr ls)))
+            ((null? ls) res)
+          (let ((i (min (- num-bins 1)
+                        (max 0 (exact (floor (/ (- (caar ls) lo) width)))))))
+            (vector-set! res i (+ (cdar ls) (vector-ref res i))))))))
+
+;;> Returns the \var{x}th quantile ([0, 1]) of the histogram \var{hist}.
+(define (histogram-quantile hist x)
+  ;; TODO: interpolate quantile between bins
+  (let ((size (* x (histogram-count hist))))
+    (let lp ((ls (histogram-bins hist))
+             (c 0))
+      (cond ((null? ls) -1)
+            ((>= (+ c (cdar ls)) count) (caar ls))
+            (else (lp (cdr ls) (+ c (cdar ls))))))))
+
+;;> Returns the \var{x}th decile ([0, 10]) of the histogram \var{hist}.
+(define (histogram-deciles hist)
+  (map (lambda (x) (histogram-quantile hist (* x 0.1)))
+       (iota 10)))
+
+;;> Simple utility to plot a histogram with characters in a
+;;> fixed-width font.
+(define (histogram-plot-ascii hist . o)
+  (let* ((bins (histogram-bins hist))
+         (width (if (pair? o) (car o) (max 78 (length bins))))
+         (height (if (and (pair? o) (pair? (cdr o))) (cadr o) 40))
+         (limit (fold (lambda (bin acc) (max (cdr bin) acc)) 0 bins)))
+    (if (<= (length bins) width)
+        (do ((i (- height 1) (- i 1)))
+            ((< i 0))
+          (write-string
+           (list->string
+            (map (lambda (bin)
+                   (if (> (cdr bin) (* limit (/ i height))) #\* #\space))
+                 bins)))
+          (newline))
+        (error "bin scaling not supported, use fewer bins or more width"))))
+
+;;> Computes the cumulative distribution function of \var{hist} at
+;;> point \var{x}.
+(define (histogram-cdf hist x)
+  (let lp ((ls (histogram-bins hist))
+           (c 0))
+    (cond ((null? ls) 1)
+          ((> (caar ls) x) (/ c (histogram-count hist)))
+          (else (lp (cdr ls) (+ c (cdar ls)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;> \section{References}
+;;>
+;;> \itemlist[
+;;> \item{\hyperlink[https://www-cs-faculty.stanford.edu/~knuth/taocp.html]{The Art of Computer Programming, Volume 2: Seminumerical Algorithms}, Donald E. Knuth (1997)}
+;;> \item{\hyperlink[https://cran.r-project.org/doc/manuals/r-release/R-intro.html]{An Introduction to R}, R Core Team (1999-2018)}
+;;> \item{\hyperlink[http://homepage.divms.uiowa.edu/~luke/xls/tutorial/techreport/techreport.html]{XLISP-STAT}, Luke Tierney (1989)}
+;;> \item{\hyperlink[https://commons.apache.org/proper/commons-math/userguide/stat.html]{Apache Commons Math - Statistics}, The Apache Software Foundation (2003-2016)}
+;;> \item{\hyperlink[http://www.jstatsoft.org/v08/i18/paper]{Evaluating Kolmogorov’s Distribution}, George Marsaglia et al (2003)}
+;;> \item{\hyperlink[https://srfi.schemers.org/srfi-144/srfi-144.html]{SRFI 144 - Flonums}, John Cowan and Will Clinger (2017)}
+;;> \item{\hyperlink[https://www.mat.univie.ac.at/~neum/scan/01.pdf]{Rounding Error Analysis of Some Methods for Summing Finite Sums}, Arnold Neumaier (1974)}
+;;> \item{\hyperlink[https://jmlr.org/papers/volume11/ben-haim10a/ben-haim10a.pdf]{A Streaming Parallel Decision Tree Algorithm}, Yael Ben-Haim et al (2010)}
+;;> \item{\hyperlink[http://www.johnmyleswhite.com/notebook/2013/03/22/modes-medians-and-means-an-unifying-perspective/]{Modes, Medians and Means: A Unifying Perspective}, John Myles White (2013)}
+;;> \item{\hyperlink[https://towardsdatascience.com/on-average-youre-using-the-wrong-average-geometric-harmonic-means-in-data-analysis-2a703e21ea0]{On Average, You’re Using the Wrong Average}, Daniel McNichol (2018)}
+;;> ]
