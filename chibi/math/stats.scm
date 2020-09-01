@@ -1,3 +1,6 @@
+;; stats.scm -- basic statistics library
+;; Copyright (c) 2019-2020 Alex Shinn.  All rights reserved.
+;; BSD-style license: http://synthcode.com/license.txt
 
 ;;> Statistics is the branch of mathematics dealing with the collection
 ;;> and analysis of data.  As we are increasingly overwhelmed with data
@@ -6,9 +9,9 @@
 ;;> libraries.
 ;;>
 ;;> Broadly speaking statistics can be divided into descriptive
-;;> statistics and inferential statistics.  This library takes a
-;;> holistic view of a distribution, with procedures working on both
-;;> theoretical and empirical distributions.
+;;> statistics and inferential statistics.  This library provides
+;;> basic utilities for both of these covering many common use cases,
+;;> while serving as a basis for more advanced uses.
 
 (define-syntax assert
   (syntax-rules ()
@@ -141,6 +144,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;> \section{Distributions}
+
+;;> This library takes a holistic view of a distribution, with
+;;> procedures working on both theoretical and empirical
+;;> distributions.
 
 ;;> \subsection{Distribution Type}
 
@@ -291,18 +298,18 @@
 ;;> \scheme{(chibi optional)}, with the following values:
 ;;>
 ;;> \itemlist[
-;;> \item{name:}
-;;> \item{size:}
-;;> \item{mean:}
-;;> \item{median:}
-;;> \item{mode:}
-;;> \item{variance:}
-;;> \item{skew:}
-;;> \item{kurtosis:}
-;;> \item{minimum:}
-;;> \item{maximum:}
-;;> \item{discrete?:}
-;;> \item{population?:}
+;;> \item{name: used for debugging}
+;;> \item{size: the population size}
+;;> \item{mean: the mean (average) value}
+;;> \item{median: the median (middle) value}
+;;> \item{mode: the mode (most common) value}
+;;> \item{variance: the variance}
+;;> \item{skew: the skew}
+;;> \item{kurtosis: the kurtosis}
+;;> \item{minimum: the minimum value}
+;;> \item{maximum: the maximum value}
+;;> \item{discrete?: true iff this is a discrete distribution}
+;;> \item{population?: true iff this is a population (as opposed to sample)}
 ;;> ]
 ;;>
 ;;> Example: create a summary given just a mean and variance:
@@ -618,14 +625,17 @@
 
 ;;> Descriptive statistics summarize some aspect of a distribution.
 ;;> The following procedures all take either a distribution, or for
-;;> convenience a list or vector as an implicit sample distribution as
-;;> constructed by the \scheme{distribution} procedure.
+;;> convenience a list or vector as an implicit sample distribution (as
+;;> constructed by the \scheme{distribution} procedure).
 ;;>
 ;;> If a list of vector is passed, an optional getter argument is
 ;;> allowed to return the value of each element in the sequence.  This
 ;;> is to allow idioms similar to dataframes in R and numpy, where the
 ;;> sequence elements could be vectors or records containing multiple
 ;;> fields.
+;;>
+;;> If a distribution is passed, we may not have complete information
+;;> for that distribution, so any of these may return \scheme{#f}.
 
 ;;> \procedure{(size dist [getter])}
 ;;> Returns the size of the distribution population, which may be
@@ -1171,6 +1181,30 @@
 ;;> \var{sample} is consistent with \var{dist}, default one-tailed.
 ;;> This is more convenient than the T-test if the population size is
 ;;> large or the variance is known.
+;;>
+;;> \var{tails} must be 1 (the default) for a one-tailed test, or 2
+;;> for a two-tailed test.  If you are testing whether a mean is
+;;> greater (or less) than the population, you want a one-tailed test,
+;;> but if you are just testing whether it is different (in either
+;;> direction) you want a two-tailed test.
+;;>
+;;> Example: We claim it takes Schemers longer to fix reported bugs
+;;> because they get distracted finding the perfect solution to the
+;;> problem.  Querying the
+;;> \hyperlink[https://developer.github.com/v3/issues/]{Github API}
+;;> indicates that the overall mean time to close an issue is 7.8 days
+;;> with a variance of 23.1 (made up numbers).  Restricting this to
+;;> just the 5,197 Scheme repositories yields a mean time to close of
+;;> 8.3 days.  Is our claim valid?  Assuming the distribution for the
+;;> time to fix bugs is normal, we can run a \scheme{z-test}:
+;;>
+;;> \example{
+;;> (z-test (summary-distribution 'mean: 8.3 'size: 5197)
+;;>         (normal-distribution 7.8 23.1))}
+;;>
+;;> This is greater than 0.05, so at a 95% confidence interval we
+;;> would reject our hypothesis - Schemers are just as slow as
+;;> everbody else.
 (define (z-test sample dist . o)
   (let ((tails (if (pair? o) (car o) 1))
         (stat (z-statistic sample dist)))
@@ -1179,6 +1213,10 @@
 
 ;;> Returns true iff the \scheme{z-test} for \var{sample} and
 ;;> \var{dist} meets the given \var{alpha} level, default 5%.
+;;>
+;;> \example{
+;;> (z-test? (summary-distribution 'mean: 8.3 'size: 5197)
+;;>          (normal-distribution 7.8 23.1))}
 (define (z-test? sample dist . o)
   (let ((alpha (if (pair? o) (car o) 0.05))
         (tails (if (and (pair? o) (pair? (cdr o))) (cadr o) 1)))
@@ -1186,6 +1224,10 @@
 
 ;;> Returns the underlying Z statistic showing how well \var{dist}
 ;;> approximates \var{sample}.
+;;>
+;;> \example{
+;;> (z-statistic (summary-distribution 'mean: 8.3 'size: 5197)
+;;>              (normal-distribution 7.8 23.1))}
 (define (z-statistic sample dist)
   (if (not (eq? 'normal (distribution-name dist)))
       (error "z-statistic expected a normal distribution" dist))
@@ -1196,6 +1238,27 @@
 ;;> William Sealy Gosset.  Returns the probability that the two
 ;;> distributions \var{dist1} and \var{dist2} have the same mean,
 ;;> under the assumption the underlying distributions are normal.
+;;> \var{tails} defaults to 1 and has the same semantics as in the
+;;> \scheme{z-test}.
+;;>
+;;> Example: You made a micro-optimization to your code but the
+;;> benchmark results are inconsistent, sometimes even being slower
+;;> than before.  The average of the times is faster, but you're not
+;;> sure if this is a real improvement or just noise.  Assuming the
+;;> noise is normally distributed, we can run a \scheme{t-test} on the
+;;> times:
+;;>
+;;> \example{
+;;> (let ((before '(30.02 29.99 30.11 29.97 30.01 29.99))
+;;>       (after  '(29.89 29.93 29.72 29.98 30.02 29.98)))
+;;>   (t-test after before))}
+;;>
+;;> This is less than a 0.05 alpha, so we can assume the improvement
+;;> is significant, if small (0.3%):
+;;>
+;;> \example{
+;;> (gain (mean '(30.02 29.99 30.11 29.97 30.01 29.99))
+;;>       (mean '(29.89 29.93 29.72 29.98 30.02 29.98)))}
 (define (t-test dist1 dist2 . o)
   (let ((tails (if (pair? o) (car o) 1))
         (stat (t-statistic dist1 dist2))
@@ -1210,6 +1273,11 @@
 
 ;;> Returns true iff the \scheme{t-test} for \var{dist1} and
 ;;> \var{dist2} meets the given \var{alpha} level, default 5%.
+;;>
+;;> Example: Given a random sample of Schemer's IQs, can we assume
+;;> they are smarter than the overall population?
+;;>
+;;> \example{(t-test? '(120 115 95 135) (normal-distribution 100 225))}
 (define (t-test? dist1 dist2 . o)
   (let ((alpha (if (pair? o) (car o) 0.05))
         (tails (if (and (pair? o) (pair? (cdr o))) (cadr o) 1)))
@@ -1217,6 +1285,8 @@
 
 ;;> Returns the underlying t statistic showing how well \var{dist1}
 ;;> matches \var{dist2}.
+;;>
+;;> \example{(t-test? '(120 115 95 135) (normal-distribution 100 225))}
 (define (t-statistic dist1 dist2)
   (cond
    ((not (distribution? dist1))
@@ -1240,7 +1310,7 @@
            (n2 (size dist2)))
       (if (< 1/2 (/ s1 s2) 2)
           (/ (- m1 m2)
-             (* (harmonic-mean n1 n2)
+             (* (harmonic-mean (list n1 n2))
                 (sqrt (/ (+ (* (- n1 1) (square s1))
                             (* (- n2 1) (square s2)))
                          (+ n1 n2 -2)))))
@@ -1251,6 +1321,8 @@
 
 ;;> Returns the degrees of freedom for the \scheme{t-test} comparing
 ;;> \var{dist1} and \var{dist2}.
+;;>
+;;> \example{(t-df '(120 115 95 135) (normal-distribution 100 225))}
 (define (t-df dist1 dist2)
   (cond
    ((not (distribution? dist1))
@@ -1306,6 +1378,19 @@
 ;;> Performs Pearson's chi-squared test (χ²) to determine the
 ;;> goodness of fit between the \var{observed} and \var{expected}
 ;;> distributions.  Returns the p-value.
+;;>
+;;> Example: We want to know if our new PRNG is generating evenly
+;;> distributed die rolls.  We can test this by comparing a histogram
+;;> of the values generated for 1 through 6, against the expected
+;;> uniform distribution:
+;;>
+;;> \example{
+;;> (let ((rolls-histogram '#(5 8 9 8 10 20)))
+;;>   (chi^2-test rolls-histogram (discrete-uniform-distribution 1 6)))}
+;;>
+;;> Since this is less than the 0.05 alpha we reject the null
+;;> hypothesis that the PRNG generates a uniform distribution, i.e. it
+;;> must be biased.
 (define (chi^2-test observed expected)
   (if (real? expected)
       (let ((stat observed)
@@ -1318,13 +1403,22 @@
                   (chi^2-df observed))))
 
 ;;> Returns \scheme{#t} iff the p-value from \scheme{chi^2-test} is
-;;> less than \var{alpha}, default 0.05.
+;;> less than \var{alpha} (default 0.05), i.e. iff the two
+;;> distributions differ.
+;;>
+;;> \example{
+;;> (let ((rolls-histogram '#(5 8 9 8 10 20)))
+;;>   (chi^2-test? rolls-histogram (discrete-uniform-distribution 1 6)))}
 (define (chi^2-test? observed expected . o)
   (let ((alpha (if (pair? o) (car o) 0.05)))
     (< (chi^2-test observed expected) alpha)))
 
 ;;> \procedure{(chi^2-statistic observed expected)}
 ;;> Returns the underlying chi^2 statistic for \scheme{chi^2-test}.
+;;>
+;;> \example{
+;;> (let ((rolls-histogram '#(5 8 9 8 10 20)))
+;;>   (chi^2-statistic rolls-histogram (discrete-uniform-distribution 1 6)))}
 (define chi^2-statistic
   (paired-dispatch
    (lambda (observed expected)
@@ -1334,6 +1428,8 @@
 
 ;;> Returns the degrees of freedom for a chi^2 goodness of fit test
 ;;> (as well as g-test).
+;;>
+;;> \example{(chi^2-df '#(5 8 9 8 10 20))}
 (define (chi^2-df observed . o)
   (let ((params (if (pair? o) (car o) 1)))
     (- (size observed) params)))
@@ -1344,6 +1440,17 @@
 ;;> Performs a G-test for goodness of fit between the \var{observed}
 ;;> and \var{expected} distributions, which performs better than the
 ;;> chi^2 test in many cases.  Returns the p-value.
+;;>
+;;> Example: Your university claimed equal enrollment for men and
+;;> women in Computer Science, but when you show up the first day to
+;;> COMP 101 there are only 42 girls out of a class of 100.  Is the
+;;> 42:58 ratio significantly different from the expected 50:50?
+;;>
+;;> \example{(g-test '(42 58) '(50 50))}
+;;>
+;;> Since this is greater than a 0.05 alpha we can't assume it is
+;;> significant, i.e. this split is within the range of the
+;;> universities' claim.
 (define (g-test observed expected)
   (if (real? observed)
       (let ((stat observed)
@@ -1353,13 +1460,18 @@
               (chi^2-df observed))))
 
 ;;> Returns \scheme{#t} iff the p-value from \scheme{g-test} is less
-;;> than \var{alpha}, default 0.05.
+;;> than \var{alpha} (default 0.05) i.e. iff the two distributions
+;;> differ.
+;;>
+;;> \example{(g-test? '(42 58) '(50 50))}
 (define (g-test? observed expected . o)
   (let ((alpha (if (pair? o) (car o) 0.05)))
     (< (g-test observed expected) alpha)))
 
 ;;> \procedure{(g-statistic observed expected)}
 ;;> Returns the underlying statistic the for \scheme{g-test}.
+;;>
+;;> \example{(g-statistic '(42 58) '(50 50))}
 (define g-statistic
   (paired-dispatch
    (lambda (observed expected)
@@ -1371,6 +1483,19 @@
 ;;> matches the \var{expected}.  This is more accurate than the
 ;;> \scheme{chi^2-test} and \scheme{g-test} when there are few values.
 ;;> Returns the p-value.
+;;>
+;;> Example: A mobile game you play has an option to spin a virtual
+;;> capsule machine as an in-game purchase, with each spin giving you
+;;> a new character.  They advertise a 3% chance of getting a rare
+;;> character.  You pay for 100 spins and get only 1 rare character.
+;;> We can run a \scheme{binomial-test} to determine if we believe
+;;> their advertised probability:
+;;>
+;;> \example{
+;;> (binomial-test (bernoulli-trials 1 100) (mean-distribution 0.03))}
+;;>
+;;> The p-value is less than 0.05 so you should probably demand your
+;;> money back.
 (define (binomial-test observed expected . o)
   (let* ((tails (if (pair? o) (car o) 1))
          (n (size observed))
@@ -1378,15 +1503,22 @@
          (p (mean expected))
          (cdf (distribution-cdf (binomial-distribution n p))))
     (assert (and (exact-integer? tails) (<= 1 tails 2)))
-    (if (= tails 2)
-        (let* ((diff (- p (mean observed)))
-               (alt (exact (floor (+ 1 (* (+ p diff) n))))))
-          (+ (- 1 (cdf successes))
-             (cdf alt)))
-        (- 1 (cdf successes)))))
+    (cond
+     ((= tails 2)
+      (let* ((diff (- p (mean observed)))
+             (alt (exact (floor (+ 1 (* (+ p diff) n))))))
+        (+ (- 1 (cdf successes))
+           (cdf alt))))
+     ((< (/ successes n) p)
+      (cdf successes))
+     (else
+      (- 1 (cdf successes))))))
 
 ;;> Returns \scheme{#t} iff the p-value from \scheme{binomial-test} is
 ;;> less than \var{alpha}, default 0.05.
+;;>
+;;> \example{
+;;> (binomial-test? (bernoulli-trials 1 100) (mean-distribution 0.03))}
 (define (binomial-test? observed expected . o)
   (let ((tails (if (pair? o) (car o) 1))
         (alpha (if (and (pair? o) (pair? (cdr o))) (cadr o) 0.05)))
@@ -1482,14 +1614,16 @@
                       (lp (+ i 1) (* s 1e140) (- eQ 140))
                       (lp (+ i 1) s eQ)))))))))))
 
-;;> Performs a Kolmogorov Smirnoff test between \var{dist1} and \var{dist2}.
+;;> Performs a Kolmogorov Smirnoff test, returning the distance
+;;> between \var{dist1} and \var{dist2}.  This is frequently used to
+;;> determine if two samples come from the same distribution, without
+;;> needing to make assumptions about that distribution (e.g. it need
+;;> not be normal).
 (define (kolmogorov-smirnoff-test dist1 dist2 . o)
   (let* ((strict? (and (pair? o) (car o)))
-         (seq1 (distribution-values dist1))
-         (seq2 (distribution-values dist2))
-         (d (kolmogorov-smirnoff-statistic seq1 seq2))
-         (m (seq-length seq1))
-         (n (seq-length seq2)))
+         (d (kolmogorov-smirnoff-statistic dist1 dist2))
+         (m (size dist1))
+         (n (size dist2)))
     (if (< (* m n) 10000)
         ;; exact
         (- 1 (/ (lattice-paths m n m n (integrate-d d m n) strict?)
@@ -1613,9 +1747,12 @@
 ;; TODO: wilcoxon-test returning p-value
 
 ;;> Performs a Wilcoxon signed ranked test to determine whether the
-;;> mean ranks of \var{dist1} and \var{dist2} differ.  It can be used
-;;> as an alternative to the \scheme{t-test} when the distributions
-;;> can't be assumed to be normal.
+;;> mean ranks of \var{dist1} and \var{dist2} (which must be paired,
+;;> i.e. the elements in aligned order) differ.  It can be used as an
+;;> alternative to the \scheme{t-test} when the distributions can't be
+;;> assumed to be normal.  Returns \scheme{#t} iff we fail to reject
+;;> the null hypothesis, i.e. we assume the distributions are the
+;;> same.
 (define (wilcoxon-test? dist1 dist2 . o)
   (let* ((tails (if (pair? o) (car o) 1))
          (alpha (if (and (pair? o) (pair? (cdr o))) (cadr o) .05)))
@@ -1804,6 +1941,26 @@
 ;;> the points.  This is the univariate case and so simply called
 ;;> \var{fit-line} to distinguish from the multivariate linear
 ;;> regression used in machine learning.
+;;>
+;;> Example: The number of SRFIs has been increasing at a steady rate
+;;> in the past 20 years.  Assuming the growth is linear, how many
+;;> final SRFIs do we expect in 2030?
+;;>
+;;> \example{
+;;> (let ((srfis '((1999 9) (2000 16) (2001 19) (2002 30) (2003 34)
+;;>                (2004 42) (2005 58) (2006 62) (2007 67) (2008 71)
+;;>                (2009 72) (2010 73) (2012 74) (2013 82) (2014 85)
+;;>                (2015 92) (2016 108) (2017 119) (2018 124)
+;;>                (2019 138) (2020 151))))
+;;>   (call-with-values (lambda () (fit-line (map car srfis) (map cadr srfis)))
+;;>     (lambda (m b)
+;;>       (let ((f (lambda (x) (inexact (+ (* m x) b)))))
+;;>         (f 2030)))))}
+;;>
+;;> Given only 73 SRFIs over the first decade this may seem
+;;> reasonable, but this doesn't account for the recent explosion in
+;;> activity, with over 200 SRFIs counting those in draft.  If the
+;;> relation is not linear, \scheme{fit-line} is a bad tool.
 (define (fit-line x y)
   (let ((n (seq-length x)))
     (unless (= n (seq-length y))

@@ -87,7 +87,9 @@
         (test-assert (t-test? a1 a2 0.05))
         (test-not (t-test? a1 a2 0.05 2))
         (test 0.246476
-            (t-test a1 (normal-distribution 30.0 0.01))))
+            (t-test a1 (normal-distribution 30.0 0.01)))
+        (test 0.465193
+            (t-test '(30.1 29.8 32.3 30.2 31.0) '(33.1 29.5 30.2 28.2 29.0))))
       ;; beta is used by the t-test
       (test 0.58031 (beta-pdf 3.5 0.5 0.6479981485767183))
       (test 0.25465 (beta-pdf 3.5 0.5 0.5))
