@@ -220,9 +220,11 @@
           (if (string=? name "")
               (loop attrs)
               (let ((name (string->symbol (string-downcase name))))
+                (skip-whitespace in)
                 (cond
                  ((eqv? (peek-char in) #\=)
                   (read-char in)
+                  (skip-whitespace in)
                   (let ((value (if (memv (peek-char in) '(#\" #\'))
                                    (apply string-append
                                           (read-quoted in entities))
