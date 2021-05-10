@@ -1,7 +1,7 @@
 
 (define-library (chibi math linalg)
   (import (scheme base) (scheme list) (scheme write)
-          (srfi 33) (srfi 160 base) (srfi 179) (srfi 179 base)
+          (srfi 33) (srfi 179)
           (chibi assert) (chibi optional))
   (export array= array-concatenate identity-array
           array-inverse determinant
@@ -12,6 +12,7 @@
   (include "linalg.scm")
   (cond-expand
    ((and chibi (not no-ffi))
+    (import (srfi 160 base) (srfi 179 base))
     (include-shared "blas")
     (begin
       (define (storage->unit storage)
