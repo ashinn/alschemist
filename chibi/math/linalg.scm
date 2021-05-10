@@ -249,7 +249,7 @@
 
 ;;> Returns a new array representing the matrix multiplication of 2-d
 ;;> arrays \var{a} and \var{b}.
-(define (array-mul a b) ; NxM * MxP => NxP
+(define (general-array-mul a b) ; NxM * MxP => NxP
   ;; TODO: optimal n-ary mul
   (let* ((a-lo (interval-lower-bounds->vector (array-domain a)))
          (a-hi (interval-upper-bounds->vector (array-domain a)))

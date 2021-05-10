@@ -9,13 +9,15 @@
       (if (pair? (car ls))
           (append-map flatten ls)
           ls))
-    (define (tensor nested-ls)
+    (define (tensor nested-ls . o)
       (let lp ((ls nested-ls) (lens '()))
         (cond
          ((pair? ls) (lp (car ls) (cons (length ls) lens)))
          (else
-          (list->array (flatten nested-ls)
-                       (make-interval (list->vector (reverse lens))))))))
+          (apply list->array
+                 (flatten nested-ls)
+                 (make-interval (list->vector (reverse lens)))
+                 o)))))
     (define-syntax test-array
       (syntax-rules ()
         ((test-array expected expr)
@@ -62,6 +64,12 @@
       (test-array (tensor '((4 4) (10 8)))
         (array-mul (tensor '((1 2) (3 4)))
                    (tensor '((2 0) (1 2)))))
+      (test-array (tensor '((4. 4.) (10. 8.)) f32-storage-class)
+        (array-mul (tensor '((1. 2.) (3. 4.)) f32-storage-class)
+                   (tensor '((2. 0.) (1. 2.)) f32-storage-class)))
+      (test-array (tensor '((4-2i 4.) (10. 8.)) c64-storage-class)
+        (array-mul (tensor '((1-i 2.) (3. 4.)) c64-storage-class)
+                   (tensor '((2. 0.) (1. 2.)) c64-storage-class)))
       (test-array (tensor '((58 64) (139 154)))
         (array-mul (tensor '((1 2 3) (4 5 6)))
                    (tensor '((7 8) (9 10) (11 12)))))
