@@ -1,0 +1,6 @@
+(define-library (chibi games chess)
+  (export-all)
+  (import (scheme base) (scheme char) (scheme process-context) (scheme write)
+          (srfi 1) (srfi 26) (srfi 33) (srfi 95) (srfi 130)
+          (chibi io) (chibi optional))
+  (include "chess.scm"))
