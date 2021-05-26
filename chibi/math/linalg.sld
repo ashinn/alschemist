@@ -1,11 +1,14 @@
 
+;;> Linear algebra and extended array routines.
+
 (define-library (chibi math linalg)
   (import (scheme base) (scheme list) (scheme write)
           (srfi 33) (srfi 179)
           (chibi assert) (chibi optional))
   (export array= array-concatenate identity-array
           array-inverse determinant
-          array-mul array-expt array-div-left array-div-right
+          array-mul array-mul! array-expt
+          array-div-left array-div-right
           array-add-elements! array-sub-elements!
           array-mul-elements! array-div-elements!
           pretty-print-array)
@@ -15,36 +18,40 @@
     (import (srfi 160 base) (srfi 179 base))
     (include-shared "blas")
     (begin
+      (define (storage->zero storage)
+        (cond ((eq? storage c64-storage-class) (make-c64vector 1 0.0))
+              ((eq? storage c128-storage-class) (make-c128vector 1 0.0))
+              ((eq? storage f64-storage-class) 0.0)
+              ((eq? storage f32-storage-class) 0.0)
+              (else 0)))
       (define (storage->unit storage)
         (cond ((eq? storage c64-storage-class) (make-c64vector 1 1.0))
               ((eq? storage c128-storage-class) (make-c128vector 1 1.0))
-              (else 1.0)))
+              ((eq? storage f64-storage-class) 1.0)
+              ((eq? storage f32-storage-class) 1.0)
+              (else 1)))
       (define (storage->gemm storage)
         (cond ((eq? storage f32-storage-class) cblas-sgemm)
               ((eq? storage f64-storage-class) cblas-dgemm)
               ((eq? storage c64-storage-class) cblas-cgemm)
               ((eq? storage c128-storage-class) cblas-zgemm)
               (else #f)))
-      (define (specialized-array-mul a b)
+      (define (specialized-array-mul! alpha a b beta c)
         (let* ((M (interval-upper-bound (array-domain a) 0))
                (N (interval-upper-bound (array-domain b) 1))
                (K (interval-upper-bound (array-domain a) 1))
                (lda (vector-ref (array-coeffs a) 1))
                (ldb (vector-ref (array-coeffs b) 1))
-               (ldc M)
-               (storage (array-storage-class a))
-               (unit (storage->unit storage)))
+               (ldc M))
           (assert (= K (interval-upper-bound (array-domain b) 0)))
-          (let ((c (make-specialized-array (make-interval (vector M N))
-                                           storage)))
-            ((storage->gemm storage)
-             CblasRowMajor CblasNoTrans CblasNoTrans
-             M N K
-             unit (array-body a) lda
-             (array-body b) ldb
-             unit (array-body c) ldc)
-            c)))
-      (define (array-mul a b)
+          ((storage->gemm (array-storage-class a))
+           CblasRowMajor CblasNoTrans CblasNoTrans
+           M N K
+           alpha (array-body a) lda
+           (array-body b) ldb
+           beta (array-body c) ldc)
+          c))
+      (define (array-mul2 a b)
         (if (and (specialized-array? a) (specialized-array? b)
                  (eq? (array-storage-class a) (array-storage-class b))
                  (storage->gemm (array-storage-class a))
@@ -52,9 +59,41 @@
                  (= 1 (vector-ref (array-coeffs a) 2))
                  (zero? (vector-ref (array-coeffs b) 0))
                  (= 1 (vector-ref (array-coeffs b) 2)))
-            (specialized-array-mul a b)
-            (general-array-mul a b)))
+            (let* ((M (interval-upper-bound (array-domain a) 0))
+                   (N (interval-upper-bound (array-domain b) 1))
+                   (storage (array-storage-class a))
+                   (res (make-specialized-array (make-interval (vector M N))
+                                                storage)))
+              (specialized-array-mul! (storage->unit storage) a b
+                                      (storage->zero storage) res))
+            (general-array-mul2 a b)))
+      (define (array-mul! c a b . o)
+        (let* ((storage (array-storage-class c))
+               (alpha (if (pair? o) (car o) (storage->unit storage)))
+               (beta (if (and (pair? o) (pair? (cdr o)))
+                         (cadr o)
+                         (storage->zero storage))))
+          (if (and (specialized-array? a) (specialized-array? b)
+                   (eq? storage (array-storage-class a))
+                   (eq? storage (array-storage-class b))
+                   (storage->gemm storage)
+                   (zero? (vector-ref (array-coeffs a) 0))
+                   (= 1 (vector-ref (array-coeffs a) 2))
+                   (zero? (vector-ref (array-coeffs b) 0))
+                   (= 1 (vector-ref (array-coeffs b) 2)))
+              (specialized-array-mul! alpha a b beta c)
+              (let ((alpha (cond ((c64vector? alpha) (c64vector-ref alpha 0))
+                                 ((c128vector? alpha) (c128vector-ref alpha 0))
+                                 (else alpha)))
+                    (beta (cond ((c64vector? beta) (c64vector-ref beta 0))
+                                ((c128vector? beta) (c128vector-ref beta 0))
+                                (else alpha))))
+                (general-array-mul! alpha a b beta c)))))
       ))
    (else
     (begin
-      (define array-mul general-array-mul)))))
+      (define array-mul2 general-array-mul2)
+      (define (array-mul! c a b . o)
+        (let ((alpha (if (pair? o) (car o) 1))
+              (beta (if (and (pair? o) (pair? (cdr o))) (cadr o) 0)))
+          (general-array-mul! alpha a b beta c)))))))

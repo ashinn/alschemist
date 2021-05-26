@@ -247,10 +247,14 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; matrix arithmetic
 
-;;> Returns a new array representing the matrix multiplication of 2-d
-;;> arrays \var{a} and \var{b}.
-(define (general-array-mul a b) ; NxM * MxP => NxP
-  ;; TODO: optimal n-ary mul
+;; Computes \var{alpha} * \var{a}\var{b} + \var{beta} * \var{c},
+;; storing the result in \var{c}, for scalars \var{alpha}, \var{beta}
+;; and arrays \var{a}, \var{b}, \var{c}.  If \var{beta} is 0 and
+;; \var{alpha} 1, then this is equivalent to storing the result of
+;; \scheme{(array-mul a b)} into \var{c}.
+(define (general-array-mul! alpha a b beta c)
+  (assert (and (array? a) (array? b) (array? c)))
+  (assert (= 2 (array-dimension a) (array-dimension b) (array-dimension c)))
   (let* ((a-lo (interval-lower-bounds->vector (array-domain a)))
          (a-hi (interval-upper-bounds->vector (array-domain a)))
          (b-lo (interval-lower-bounds->vector (array-domain b)))
@@ -259,6 +263,40 @@
          (m (vector-ref a-hi 1))
          (p (vector-ref b-hi 1))
          (off (- (vector-ref b-lo 1) (vector-ref a-lo 1)))
+         (a-getter (array-getter a))
+         (b-getter (array-getter b))
+         (getter (array-getter c))
+         (setter (array-setter c)))
+    (assert (= (- m (vector-ref a-lo 1))
+               (- (vector-ref b-hi 0) (vector-ref b-lo 0))))
+    (assert (and (zero? (interval-lower-bound (array-domain c) 0))
+                 (zero? (interval-lower-bound (array-domain c) 1))))
+    (assert (and (= n (interval-upper-bound (array-domain c) 0))
+                 (= p (interval-upper-bound (array-domain c) 1))))
+    (do ((i (vector-ref a-lo 0) (+ i 1)))
+        ((= i n) c)
+      (do ((k (vector-ref b-lo 0) (+ k 1)))
+          ((= k p))
+        (do ((j (vector-ref a-lo 1) (+ j 1))
+             (tmp 0 (+ tmp (* (a-getter i j)
+                              (b-getter (+ j off) k)))))
+            ((= j m)
+             (setter (+ (* beta (getter i k)) (* alpha tmp)) i k)))))))
+
+;; Returns a new array representing the matrix multiplication of 2-d
+;; arrays \var{a} and \var{b}.
+(define (general-array-mul2 a b) ; NxM * MxP => NxP
+  ;; TODO: optimal n-ary mul
+  (let* ((a-lo (interval-lower-bounds->vector (array-domain a)))
+         (a-hi (interval-upper-bounds->vector (array-domain a)))
+         (b-lo (interval-lower-bounds->vector (array-domain b)))
+         (b-hi (interval-upper-bounds->vector (array-domain b)))
+         (n (vector-ref a-hi 0))
+         (m (vector-ref a-hi 1))
+         (p (vector-ref b-hi 1))
+         (b-off (- (vector-ref b-lo 1) (vector-ref a-lo 1)))
+         (off0 (- (vector-ref a-lo 0)))
+         (off1 (- (vector-ref a-lo 1)))
          (res (make-specialized-array
                (make-interval (vector (- n (vector-ref a-lo 0))
                                       (- p (vector-ref b-lo 0))))
@@ -270,13 +308,82 @@
         ((= i n) res)
       (do ((k (vector-ref b-lo 0) (+ k 1)))
           ((= k p))
-        (let ((tmp 0))
-          (do ((j (vector-ref a-lo 1) (+ j 1))
-               (tmp 0 (+ tmp (* (array-ref a i j)
-                                (array-ref b (+ j off) k)))))
-              ((= j m)
-               (setter tmp i k))))))))
+        (do ((j (vector-ref a-lo 1) (+ j 1))
+             (tmp 0 (+ tmp (* (array-ref a i j)
+                              (array-ref b (+ j b-off) k)))))
+            ((= j m)
+             (setter tmp (+ i off0) (+ k off1))))))))
 
+;; convert a matrix multiplication chain to the flattened vector of
+;; dimensions for convenient cost lookup
+(define (array-mul-chain-dims array-vec)
+  (define (array-height array)
+    (- (interval-upper-bound (array-domain array) 0)
+       (interval-lower-bound (array-domain array) 0)))
+  (define (array-width array)
+    (- (interval-upper-bound (array-domain array) 1)
+       (interval-lower-bound (array-domain array) 1)))
+  (let ((res (make-vector (+ (vector-length array-vec) 1))))
+    (vector-set! res 0 (array-height (vector-ref array-vec 0)))
+    (do ((i 1 (+ i 1)))
+        ((= i (vector-length res)) res)
+      (let ((array (vector-ref array-vec (- i 1))))
+        (assert (= (vector-ref res (- i 1)) (array-height array)))
+        (vector-set! res i (array-width array))))))
+
+;; returns the 2D array of lowest cost splits
+(define (array-mul-associate array-vec)
+  (let* ((num-arrays (vector-length array-vec))
+         (dims (array-mul-chain-dims array-vec))
+         (costs (make-specialized-array
+                 (make-interval (vector num-arrays num-arrays))))
+         (get-cost (array-getter costs))
+         (set-cost! (array-setter costs))
+         (splits (make-specialized-array
+                  (make-interval (vector num-arrays num-arrays))))
+         (set-split! (array-setter splits)))
+    (do ((i 0 (+ i 1)))
+        ((= i num-arrays))
+      (set-cost! 0 i i))
+    (do ((len 2 (+ len 1)))
+        ((> len num-arrays)
+         splits)
+      (do ((i 0 (+ i 1)))
+          ((> i (- num-arrays len)))
+        (let ((j (+ i len -1)))
+          (set-cost! +inf.0 i j)
+          (do ((k i (+ k 1)))
+              ((= k j))
+            (let ((cost (+ (get-cost i k)
+                           (get-cost (+ k 1) j)
+                           (* (vector-ref dims i)
+                              (vector-ref dims (+ k 1))
+                              (vector-ref dims (+ j 1))))))
+              (when (< cost (get-cost i j))
+                (set-cost! cost i j)
+                (set-split! k i j)))))))))
+
+;;> Chained matrix multiplication.  For a single array, returns that
+;;> array.  For two arrays, performs normal matrix multiplication.
+;;> For more arrays, determines the optimal associativity and performs
+;;> the corresponding set of multiplications.
+(define (array-mul a . o)
+  (cond
+   ((null? o)
+    a)
+   ((null? (cdr o))
+    (array-mul2 a (car o)))
+   (else
+    (let* ((vec (list->vector (cons a o)))
+           (splits (array-mul-associate vec))
+           (get-split (array-getter splits)))
+      (let mul ((i 0) (j (- (vector-length vec) 1)))
+        (if (= i j)
+            (vector-ref vec i)
+            (let ((split (get-split i j)))
+              (array-mul2 (mul i split) (mul (+ split 1) j)))))))))
+
+;;> Returns \var{a} multiplied by itself \var{pow} times.
 (define (array-expt a pow)
   (let loop ((a a) (n pow))
     (case n
