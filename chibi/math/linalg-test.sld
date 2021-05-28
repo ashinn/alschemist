@@ -102,6 +102,21 @@
         (test-array (tensor '((0 3) (6 9))) (values A))
         (array-div-elements! A 2)
         (test-array (tensor '((0 3/2) (3 9/2))) (values A)))
+      (let ((A (tensor '((1. 2.) (3. 4.)) f32-storage-class)))
+        (array-add-elements! A 1.)
+        (test-array (tensor '((2. 3.) (4. 5.))) (values A))
+        (array-sub-elements! A 2.)
+        (test-array (tensor '((0. 1.) (2. 3.))) (values A))
+        (array-mul-elements! A 3.)
+        (test-array (tensor '((0. 3.) (6. 9.))) (values A))
+        (array-div-elements! A 2.)
+        (test-array (tensor '((0. 1.5) (3. 4.5))) (values A)))
+      (test 30.
+          (array-dot (tensor '(1. 2. 3. 4.))
+                     (tensor '(1. 2. 3. 4.))))
+      (test 30.
+          (array-dot (tensor '(1. 2. 3. 4.) f32-storage-class)
+                     (tensor '(1. 2. 3. 4.) f32-storage-class)))
       (test "  0 10\n200  3\n"
           (pretty-print-array (tensor '((0 10) (200 3))) #f))
       (test "[0 1]\n[2 3]\n"

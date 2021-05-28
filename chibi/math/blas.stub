@@ -1,0 +1,81 @@
+
+(c-include "cblas.h")
+(c-link "cblas")
+
+;; CBLAS_ORDER
+(define-c-const int CblasRowMajor CblasColMajor)
+;; CBLAS_TRANSPOSE
+(define-c-const int CblasNoTrans CblasTrans CblasConjTrans)
+
+;; Level 1
+
+;; x = a*x
+(define-c void cblas-sscal
+  (int #|num_elements|# float #|a|# f32vector #|x|# int #|incX|#))
+(define-c void cblas-dscal
+  (int #|num_elements|# double #|a|# f64vector #|x|# int #|incX|#))
+(define-c void cblas-cscal
+  (int #|num_elements|# c64vector #|a|# c64vector #|x|# int #|incX|#))
+(define-c void cblas-zscal
+  (int #|num_elements|# c128vector #|a|# c128vector #|x|# int #|incX|#))
+
+;; y = a*x + y
+(define-c void cblas-saxpy
+  (int #|num_elements|# float #|a|# f32vector #|x|# int #|incX|#
+       f32vector #|y|# int #|incY|#))
+(define-c void cblas-daxpy
+  (int #|num_elements|# double #|a|# f64vector #|x|# int #|incX|#
+       f64vector #|y|# int #|incY|#))
+(define-c void cblas-caxpy
+  (int #|num_elements|# c64vector #|a|# c64vector #|x|# int #|incX|#
+       c64vector #|y|# int #|incY|#))
+(define-c void cblas-zaxpy
+  (int #|num_elements|# c128vector #|a|# c128vector #|x|# int #|incX|#
+       c128vector #|y|# int #|incY|#))
+
+;; dot product
+(define-c float cblas-sdot
+  (int #|num_elements|# f32vector #|x|# int #|incX|#
+       f32vector #|y|# int #|incY|#))
+(define-c double cblas-ddot
+  (int #|num_elements|# f64vector #|x|# int #|incX|#
+       f64vector #|y|# int #|incY|#))
+
+;; Level 3
+
+;; Computes C <- aAB + bC
+;; M = number of rows in A, C
+;; N = number of columns in B, C
+;; K = number of columns in A, number of rows in B
+(define-c void cblas-sgemm
+  (int #|CBLAS_ORDER|# int #|TransA|# int #|TransB|#
+   int #|M|# int #|N|# int #|K|#
+   float #|alpha|# f32vector #|A|# int #|lda=M|#
+   f32vector #|B|# int #|ldb=K|#
+   float #|beta|# f32vector #|C|# int #|ldc=M|#))
+
+;; Same as above, but double precision.
+(define-c void cblas-dgemm
+  (int #|CBLAS_ORDER|# int #|TransA|# int #|TransB|#
+   int #|M|# int #|N|# int #|K|#
+   double #|alpha|# f64vector #|A|# int #|lda=M|#
+   f64vector #|B|# int #|ldb=K|#
+   double #|beta|# f64vector #|C|# int #|ldc=M|#))
+
+;; Complex single precision, pass the scalar multipliers as single
+;; element c64vectors.
+(define-c void cblas-cgemm
+  (int #|CBLAS_ORDER|# int #|TransA|# int #|TransB|#
+   int #|M|# int #|N|# int #|K|#
+   c64vector #|alpha|# c64vector #|A|# int #|lda=M|#
+   c64vector #|B|# int #|ldb=K|#
+   c64vector #|beta|# c64vector #|C|# int #|ldc=M|#))
+
+;; Complex double precision, pass the scalar multipliers as single
+;; element c128vectors.
+(define-c void cblas-zgemm
+  (int #|CBLAS_ORDER|# int #|TransA|# int #|TransB|#
+   int #|M|# int #|N|# int #|K|#
+   c128vector #|alpha|# c128vector #|A|# int #|lda=M|#
+   c128vector #|B|# int #|ldb=K|#
+   c128vector #|beta|# c128vector #|C|# int #|ldc=M|#))

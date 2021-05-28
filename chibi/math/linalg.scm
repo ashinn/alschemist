@@ -452,10 +452,17 @@
               (array-domain a))
              (lp (cdr ls))))))))))
 
-(define-array-elements-op array-add-elements! +)
-(define-array-elements-op array-sub-elements! -)
-(define-array-elements-op array-mul-elements! *)
-(define-array-elements-op array-div-elements! /)
+(define-array-elements-op general-array-add-elements! +)
+(define-array-elements-op general-array-sub-elements! -)
+(define-array-elements-op general-array-mul-elements! *)
+(define-array-elements-op general-array-div-elements! /)
+
+(define (general-array-dot a b)
+  (assert (and (array? a) (array? b)))
+  (assert (= 1 (array-dimension a) (array-dimension b)))
+  (let ((sum 0))
+    (array-for-each (lambda (x y) (set! sum (+ sum (* x y)))) a b)
+    sum))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; utilities
@@ -472,7 +479,7 @@
 ;;> and a tic-tac-toe board can be printed with
 ;;>
 ;;>  (pretty-print-array a #t 'line-char: "|"
-;;>     'top: "-" 'middle-col: "|" center-row: "-")
+;;>     'top: "-" 'middle-col: "|" 'center-row: "-")
 
 (define (pretty-print-array a . opt)
   (assert (array? a) (>= (array-dimension a) 2))
