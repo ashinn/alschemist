@@ -117,6 +117,19 @@
       (test 30.
           (array-dot (tensor '(1. 2. 3. 4.) f32-storage-class)
                      (tensor '(1. 2. 3. 4.) f32-storage-class)))
+      (test-array (tensor '(2.5))
+        (array-convolve (tensor '(1. 2. 3.))
+                        (tensor '(0. 1. 0.5))))
+      (test-array (tensor '((145. 108.) (108. 121.)))
+        (array-convolve (tensor '((3. 9. 0.) (2. 8. 1.) (1. 4. 8.)))
+                        (tensor '((8. 9.) (4. 4.)))))
+      (test 3 (array-sum (tensor '(1 2))))
+      (test -1 (array-sum (tensor '(1 -2))))
+      (test 3 (array-1norm (tensor '(1 2))))
+      (test 3 (array-1norm (tensor '(1 -2))))
+      (test 2.236068 (array-2norm (tensor '(1 2))))
+      (test 2 (array-inf-norm (tensor '(1 2))))
+      (test (expt 9. 1/3) (array-norm (tensor '(1 2)) 3))
       (test "  0 10\n200  3\n"
           (pretty-print-array (tensor '((0 10) (200 3))) #f))
       (test "[0 1]\n[2 3]\n"

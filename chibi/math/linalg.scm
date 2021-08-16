@@ -44,7 +44,9 @@
                          (vector-ref c-hi axis)
                          o))
       (let* ((c-domain (make-interval c-lo c-hi))
-             (c (make-specialized-array c-domain (array-storage-class a)))
+             (c (make-specialized-array c-domain
+                                        (or (array-storage-class a)
+                                            generic-storage-class)))
              (b-trans (make-vector (array-dimension a) 0)))
         (array-assign!
          (array-extract c (make-interval c-lo (interval-widths a-domain)))
@@ -67,6 +69,12 @@
                              b-trans)))
                   (array-assign! view b)
                   (lp (cdr arrays) b-offset2)))))))))
+
+;;> Translates \var{array} so that it's lower bounds are all zero.
+(define (array-to-origin array)
+  (array-translate
+   array
+   (vector-map - (interval-lower-bounds->vector (array-domain array)))))
 
 ;;> Shorthand for array-permute, swapping two dimensions.
 (define (array-transpose a . opt)
@@ -300,7 +308,7 @@
          (res (make-specialized-array
                (make-interval (vector (- n (vector-ref a-lo 0))
                                       (- p (vector-ref b-lo 0))))
-               (array-storage-class a)))
+               (or (array-storage-class a) generic-storage-class)))
          (setter (array-setter res)))
     (assert (= (- m (vector-ref a-lo 1))
                (- (vector-ref b-hi 0) (vector-ref b-lo 0))))
@@ -314,15 +322,16 @@
             ((= j m)
              (setter tmp (+ i off0) (+ k off1))))))))
 
+(define (array-height array)
+  (- (interval-upper-bound (array-domain array) 0)
+     (interval-lower-bound (array-domain array) 0)))
+(define (array-width array)
+  (- (interval-upper-bound (array-domain array) 1)
+     (interval-lower-bound (array-domain array) 1)))
+
 ;; convert a matrix multiplication chain to the flattened vector of
 ;; dimensions for convenient cost lookup
 (define (array-mul-chain-dims array-vec)
-  (define (array-height array)
-    (- (interval-upper-bound (array-domain array) 0)
-       (interval-lower-bound (array-domain array) 0)))
-  (define (array-width array)
-    (- (interval-upper-bound (array-domain array) 1)
-       (interval-lower-bound (array-domain array) 1)))
   (let ((res (make-vector (+ (vector-length array-vec) 1))))
     (vector-set! res 0 (array-height (vector-ref array-vec 0)))
     (do ((i 1 (+ i 1)))
@@ -459,10 +468,96 @@
 
 (define (general-array-dot a b)
   (assert (and (array? a) (array? b)))
-  (assert (= 1 (array-dimension a) (array-dimension b)))
+  (assert (= (array-dimension a) (array-dimension b)))
   (let ((sum 0))
     (array-for-each (lambda (x y) (set! sum (+ sum (* x y)))) a b)
     sum))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; norms
+
+;; not a norm because it can yield negative results
+(define (array-sum a)
+  (array-fold + 0 a))
+
+;; aka L1-norm, taxicab norm, or Manhattan norm: array-sum of the abs values
+(define (array-1norm a)
+  (array-fold (lambda (x acc) (+ (abs x) acc)) 0 a))
+
+;; aka L2-norm, Euclidean norm, Frobenius norm or square norm
+(define (array-2norm a)
+  (sqrt (array-dot a a)))
+
+;; aka p-norm, the generalized form of the above
+(define (array-norm a p)
+  (expt (array-fold (lambda (x acc) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
+
+;; aka max norm or infinity norm, the maximum magnitude of the entries
+(define (array-inf-norm a)
+  (array-fold (lambda (x acc) (max (abs x) acc)) 0 a))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; convolutions
+
+(define (array-convolve a kernel)
+  (assert (and (array? a) (array? kernel)))
+  (let* ((kernel (array-to-origin kernel))
+         (kernel-domain (array-domain kernel))
+         (kernel-widths (interval-upper-bounds->vector kernel-domain))
+         (domain (array-domain a))
+         (res-domain
+          (make-interval (interval-lower-bounds->vector domain)
+                         (vector-map -
+                                     (interval-upper-bounds->vector domain)
+                                     kernel-widths
+                                     (make-vector (vector-length kernel-widths)
+                                                  -1))))
+         (res (make-specialized-array res-domain
+                                      (or (array-storage-class a)
+                                          generic-storage-class)))
+         (setter (array-setter res)))
+    ;; TODO: flatten this into a single array-mul:
+    ;; 1. pre-expand the windows of a into columns
+    ;; 2. multiply the kernel (flattened to 1d) * the columns
+    ;; 3. reshape the result
+    (interval-for-each
+     (case (array-dimension a)
+       ((1)
+        ;; by convention the kernels in 1D convolutions are reversed
+        (let ((kernel (array-reverse kernel))
+              (kernel-elts (array-height kernel)))
+          (lambda (i)
+            (let ((end-elt (+ i kernel-elts)))
+              (let ((window
+                     (array-to-origin
+                      (array-extract a (make-interval
+                                        (vector i)
+                                        (vector end-elt))))))
+                (setter (array-dot kernel window) i))))))
+       ((2)
+        (let ((kernel-rows (array-height kernel))
+              (kernel-cols (array-width kernel)))
+          (lambda (i j)
+            (let ((end-row (+ i kernel-rows))
+                  (end-col (+ j kernel-cols)))
+              (let ((window
+                     (array-to-origin
+                      (array-extract a (make-interval
+                                        (vector i j)
+                                        (vector end-row end-col))))))
+                (setter (array-dot kernel window) i j))))))
+       (else
+        (let ((kernel-offs
+               (interval-upper-bounds->vector (array-domain kernel))))
+          (lambda multi-index
+            (let* ((lower (list->vector multi-index))
+                   (upper (vector-map + lower kernel-offs)))
+              (let ((window
+                     (array-to-origin
+                      (array-extract a (make-interval lower upper)))))
+                (apply setter (array-dot kernel window) multi-index)))))))
+     res-domain)
+    res))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; utilities

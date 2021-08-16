@@ -2,16 +2,19 @@
 ;;> Linear algebra and extended array routines.
 
 (define-library (chibi math linalg)
-  (import (scheme base) (scheme list) (scheme write)
+  (import (scheme base) (scheme inexact) (scheme list) (scheme write)
           (srfi 33) (srfi 179)
           (chibi assert) (chibi optional))
   (export array= array-concatenate identity-array
+          array-to-origin
           array-inverse determinant
           array-mul array-mul! array-expt
           array-div-left array-div-right
           array-add-elements! array-sub-elements!
           array-mul-elements! array-div-elements!
-          array-dot  ;; TODO: norms
+          array-dot array-convolve
+          array-sum array-1norm array-2norm
+          array-inf-norm array-norm
           pretty-print-array)
   (include "linalg.scm")
   (cond-expand
@@ -255,4 +258,5 @@
       (define array-sub-elements! general-array-sub-elements!)
       (define array-mul-elements! general-array-mul-elements!)
       (define array-div-elements! general-array-div-elements!)
-      (define array-dot general-array-dot)))))
+      (define array-dot general-array-dot)
+      ))))
