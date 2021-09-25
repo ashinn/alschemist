@@ -5,7 +5,7 @@
   (import (scheme base) (scheme inexact) (scheme list) (scheme write)
           (srfi 33) (srfi 179)
           (chibi assert) (chibi optional))
-  (export array= array-concatenate identity-array
+  (export array= array-append array-stack identity-array
           array-to-origin
           array-inverse determinant
           array-mul array-mul! array-expt

@@ -25,7 +25,7 @@
 ;;> or more arrays along the \var{axis} dimension.  All arrays must
 ;;> have the same dimension, and all domains must have the same width
 ;;> for each dimension except \var{axis}.
-(define (array-concatenate axis a . o)
+(define (array-append axis a . o)
   (assert (exact-integer? axis)
           (array? a)
           (< -1 axis (array-dimension a))
@@ -70,6 +70,36 @@
                   (array-assign! view b)
                   (lp (cdr arrays) b-offset2)))))))))
 
+;;> Returns a new specialized array which is the joining of 1 or more
+;;> arrays along a new \var{axis}.  All arrays must have the same
+;;> domain.  The result will be one dimension larger, and \var{axis}
+;;> must fit within that dimension.
+(define (array-stack axis a . o)
+  (assert (exact-integer? axis)
+          (array? a)
+          (< -1 axis (array-dimension a))
+          (every array? o)
+          (every (lambda (b) (interval= (array-domain a) (array-domain b))) o))
+  (let* ((a-lbs (interval-lower-bounds->list (array-domain a)))
+         (a-ubs (interval-upper-bounds->list (array-domain a)))
+         (domain
+          (make-interval
+           `#(,@(take a-lbs axis) 0 ,@(drop a-lbs axis))
+           `#(,@(take a-ubs axis) ,(+ 1 (length o)) ,@(drop a-ubs axis))))
+         (res (make-specialized-array domain
+                                      (or (array-storage-class a)
+                                          generic-storage-class)))
+         (perm `#(,axis ,@(delete axis (iota (+ 1 (array-dimension a))))))
+         (permed (if (zero? axis) res (array-permute res perm)))
+         (curried (array-curry permed 1))
+         (get-view (array-getter curried)))
+    (let lp ((ls (cons a o)) (i 0))
+      (cond
+       ((null? ls) res)
+       (else
+        (array-assign! (get-view i) (car ls))
+        (lp (cdr ls) (+ i 1)))))))
+
 ;;> Translates \var{array} so that it's lower bounds are all zero.
 (define (array-to-origin array)
   (array-translate
@@ -87,13 +117,10 @@
 ;;> Returns true iff all arrays have the same domain, and all elements
 ;;> in the same indexes are \code{=}.
 (define (array= a . arrays)
+  (assert (and (array? a) (every array? arrays)))
   (and (every (lambda (b) (interval= (array-domain a) (array-domain b)))
               arrays)
        (apply array-every = a arrays)))
-
-;; TODO:
-;; array-stack
-;; array-rotate-90
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; linear algebra
@@ -217,7 +244,7 @@
     ;; can only compute inverses of square matrices
     (assert (= n m))
     (let* ((id (identity-array n (array-storage-class a)))
-           (tmp (array-concatenate 1 a id)))
+           (tmp (array-append 1 a id)))
       (array-solve-left-identity! tmp)
       (and (= 1 (array-ref tmp
                            (- (interval-upper-bound domain 0) 1)
@@ -294,7 +321,6 @@
 ;; Returns a new array representing the matrix multiplication of 2-d
 ;; arrays \var{a} and \var{b}.
 (define (general-array-mul2 a b) ; NxM * MxP => NxP
-  ;; TODO: optimal n-ary mul
   (let* ((a-lo (interval-lower-bounds->vector (array-domain a)))
          (a-hi (interval-upper-bounds->vector (array-domain a)))
          (b-lo (interval-lower-bounds->vector (array-domain b)))
@@ -476,29 +502,37 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; norms
 
-;; not a norm because it can yield negative results
+;;> Returns the sum of all elements in array \var{a}.  Not a norm
+;;> because it can yield negative results.
 (define (array-sum a)
   (array-fold + 0 a))
 
-;; aka L1-norm, taxicab norm, or Manhattan norm: array-sum of the abs values
+;;> Returns the sum of the absolute values of all elements in array
+;;> \var{a}.  Aka the L1-norm, taxicab norm, or Manhattan norm.
 (define (array-1norm a)
   (array-fold (lambda (x acc) (+ (abs x) acc)) 0 a))
 
-;; aka L2-norm, Euclidean norm, Frobenius norm or square norm
+;;> Returns the sum of the square of all elements in array \var{a}.
+;;> Aka the L2-norm, Euclidean norm, Frobenius norm or square norm.
 (define (array-2norm a)
   (sqrt (array-dot a a)))
 
-;; aka p-norm, the generalized form of the above
+;;> Returns the sum of the absolute value of all elements in array
+;;> \var{a} raised to the \var{p} power.  Aka the p-norm, this is the
+;;> generalized form of the above.
 (define (array-norm a p)
   (expt (array-fold (lambda (x acc) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
 
-;; aka max norm or infinity norm, the maximum magnitude of the entries
+;;> Returns the maximum absolute value of all elements in array
+;;> \var{a}.  Aka the max norm or infinity norm.
 (define (array-inf-norm a)
   (array-fold (lambda (x acc) (max (abs x) acc)) 0 a))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; convolutions
 
+;;> Returns the convolution of array \var{a} using the given
+;;> \var{kernel}.
 (define (array-convolve a kernel)
   (assert (and (array? a) (array? kernel)))
   (let* ((kernel (array-to-origin kernel))

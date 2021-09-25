@@ -29,23 +29,32 @@
       (test -6
           (determinant (tensor '((-2 3 -1) (5 -1 4) (4 -8 2)))))
       (test-array (tensor '((4 7) (2 6) (1 0) (0 1)))
-        (array-concatenate 0 (tensor '((4 7) (2 6))) (identity-array 2)))
+        (array-append 0 (tensor '((4 7) (2 6))) (identity-array 2)))
       (test-array (tensor '((4 7) (2 6) (1 0) (0 1)))
-        (array-concatenate 0
+        (array-append 0
                            (list->array '(4 7 2 6)
                                         (make-interval '#(2 2) '#(4 4)))
                            (identity-array 2)))
       (test-array (tensor '((4 7 1 0) (2 6 0 1)))
-        (array-concatenate 1 (tensor '((4 7) (2 6))) (identity-array 2)))
+        (array-append 1 (tensor '((4 7) (2 6))) (identity-array 2)))
       (test-array (tensor '((4 7 2 1 0) (6 3 5 0 1)))
-        (array-concatenate 1 (tensor '((4 7 2) (6 3 5))) (identity-array 2)))
+        (array-append 1 (tensor '((4 7 2) (6 3 5))) (identity-array 2)))
       (test-array (tensor '((4 7 1 0 0 1 3)
                             (2 6 0 1 5 8 9)))
-        (array-concatenate
+        (array-append
          1
          (list->array '(4 7 2 6) (make-interval '#(2 2)))
          (identity-array 2)
          (list->array '(0 1 3 5 8 9) (make-interval '#(2 3)))))
+      (test-array (tensor '(((4 7) (2 6))
+                            ((1 0) (0 1))))
+        (array-stack 0 (tensor '((4 7) (2 6))) (identity-array 2)))
+      (test-array (tensor '(((4 7) (1 0))
+                            ((2 6) (0 1))))
+        (array-stack 1 (tensor '((4 7) (2 6))) (identity-array 2)))
+      (test-array (tensor '(((4 1) (7 0))
+                            ((2 0) (6 1))))
+        (array-stack 2 (tensor '((4 7) (2 6))) (identity-array 2)))
       (test-array (tensor '((3/5 -7/10) (-1/5 2/5)))
         (array-inverse (tensor '((4 7) (2 6)))))
       (test-array (tensor '((1/5 1/5 0)
