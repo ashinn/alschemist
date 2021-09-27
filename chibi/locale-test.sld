@@ -3,6 +3,12 @@
   (import (scheme base) (chibi locale) (chibi test))
   (export run-tests)
   (begin
+    (define (locale->list locale)
+      (list (locale-language locale)
+            (locale-script locale)
+            (locale-region locale)
+            (locale-variant locale)
+            (locale-extensions locale)))
     (define (run-tests)
       (test-group "(chibi locale)"
         (test '(es #f 419 #f ())

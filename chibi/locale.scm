@@ -1,6 +1,16 @@
 
+;;> A lightweight library for representing locale information and
+;;> serializing to and from strings.
+
+;;> A Locale record is an immutable object representing the
+;;> information in IETF BCP 47.  This can be used for distinctions
+;;> necessary in written and spoken language, but does not provide the
+;;> full locale information specified by POSIX LC_* variables such as
+;;> collation and numeric and time formatting, except for reasonable
+;;> defaults that can be inferred from the region.
+
 (define-record-type Locale
-  (make-locale language script region variant extensions)
+  (%make-locale language script region variant extensions)
   locale?
   (language locale-language)
   (script locale-script)
@@ -8,16 +18,46 @@
   (variant locale-variant)
   (extensions locale-extensions))
 
-(define (locale->list locale)
-  (list (locale-language locale)
-        (locale-script locale)
-        (locale-region locale)
-        (locale-variant locale)
-        (locale-extensions locale)))
+;;> \procedure{(make-locale language [region variant script extensions])}
+;;>
+;;> Returns a new locale object for the given language, with optional
+;;> region, variant, script and extensions.  The \var{language} should
+;;> be a 2 or 3 letter symbol such as \scheme{'en} or \scheme{'ain}.
+;;> The \var{region} is an ISO 3166 code, either an uppercased 2
+;;> letter symbol such as \scheme{'US} or \scheme{'FR} or a 3 digit
+;;> code from ISO 3166-1 or UN M49 such as \scheme{029} (Caribbean).
+;;> The \var{variant} is 5-8 letter language variant such as
+;;> \scheme{'polyton} for Polytonic (Ancient) Greek.  The \var{script}
+;;> is a 4 letter titlecased symbol such as \scheme{'Latn} (Latin),
+;;> \scheme{'Cyrl} (Cyrillic), or \scheme{'Jpan} (Han + Hiragana +
+;;> Katakana).  The \var{extensions} are an alist whose keys are
+;;> single letter symbols (currently only \scheme{'u} and \scheme{'x}
+;;> are defined) with subtag string values.
+;;>
+;;> Note the order of the arguments differs from the serialized string
+;;> representation (moving \var{script} after \var{region} and
+;;> \var{variant}) to make the common case construction more
+;;> convenient.
+;;>
+;;> Example:
+;;> \example{(locale->string (make-locale 'ja 'JP))}
+(define (make-locale language . o)
+  (let* ((region (and (pair? o) (car o)))
+         (o (if (pair? o) (cdr o) '()))
+         (variant (and (pair? o) (car o)))
+         (script (and (pair? o) (car o)))
+         (o (if (pair? o) (cdr o) '()))
+         (extensions (if (and (pair? o) (pair? (cdr o))) (cadr o) '())))
+    (%make-locale language script region variant extensions)))
 
-(define (list->locale ls)
-  (apply make-locale ls))
-
+;;> Returns the Locale record corresponding to the given serialized
+;;> string representation, signalling an error on invalid format.
+;;> Allows underscores as well as hyphens as tag separators.  Note
+;;> that the LANG environment variable should not be passed to this
+;;> directly as it typically has a .<encoding> suffix.
+;;>
+;;> Example:
+;;> \example{(locale-language (string->locale "ja-JP"))}
 (define (string->locale str)
   (let ((end (string-cursor-end str)))
     (let lp ((from (string-cursor-start str))
@@ -28,7 +68,7 @@
              (variant #f))
       (cond
        ((and (string-cursor=? from to) (string-cursor>=? to end))
-        (make-locale lang script region variant '()))
+        (%make-locale lang script region variant '()))
        ((or (string-cursor=? to end)
             (memv (string-ref/cursor str to) '(#\- #\_)))
         (let ((tag (substring/cursors str from to))
@@ -41,7 +81,7 @@
                         (to3 (string-cursor-next str to2)))
                    (cond
                     ((or (eq? t 'x) (string-cursor>=? to end2))
-                     (make-locale
+                     (%make-locale
                       lang script region variant
                       (reverse
                        (cons (cons t (substring/cursors str from end)) ext))))
@@ -80,6 +120,7 @@
         (lp from (string-cursor-next str to) lang script region variant)
         )))))
 
+;;> Returns the serialized string representation of \var{locale}.
 (define (locale->string locale)
   (string-concatenate
    `(,(symbol->string (locale-language locale))
