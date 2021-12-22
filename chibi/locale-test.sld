@@ -39,4 +39,27 @@
             (locale->string (string->locale "ja-JP-u-ca-japanese")))
         (test "ja-JP-u-ca-japanese-x-y-z"
             (locale->string (string->locale "ja-JP-u-ca-japanese-x-y-z")))
+        (test-assert (locale= (make-locale 'hi 'IN #f 'Latn)
+                              (string->locale "hi-Latn-IN")))
+        (test-not (locale= (make-locale 'hi 'IN #f 'Latn)
+                           (string->locale "hi-IN")))
+        (test-assert (locale-includes? (make-locale 'hi 'IN #f 'Latn)
+                                       (string->locale "hi-Latn-IN")))
+        (test-assert (locale-includes? (make-locale 'hi 'IN)
+                                       (string->locale "hi-Latn-IN")))
+        (test-not (locale-includes? (string->locale "hi-Latn-IN")
+                                    (make-locale 'hi 'IN)))
+        (test "hi-Latn-IN"
+            (locale->string
+             (locale-generalize (string->locale "hi-Latn-IN-x-y"))))
+        (test "hi-Latn"
+            (locale->string
+             (locale-generalize (string->locale "hi-Latn-IN"))))
+        (test "hi"
+            (locale->string
+             (locale-generalize (string->locale "hi-Latn"))))
+        (test ""
+            (locale->string
+             (locale-generalize (string->locale "hi"))))
+        (test-not (locale-generalize (string->locale "")))
         ))))

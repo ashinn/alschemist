@@ -33,6 +33,7 @@
               (lp (cdr ls)))))
           (get-output-string out))))))
   (export locale? make-locale
+          locale= locale-includes? locale-generalize
           locale-language locale-script locale-region
           locale-variant locale-extensions
           locale->string string->locale)

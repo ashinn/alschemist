@@ -45,10 +45,56 @@
   (let* ((region (and (pair? o) (car o)))
          (o (if (pair? o) (cdr o) '()))
          (variant (and (pair? o) (car o)))
+         (o (if (pair? o) (cdr o) '()))
          (script (and (pair? o) (car o)))
          (o (if (pair? o) (cdr o) '()))
          (extensions (if (and (pair? o) (pair? (cdr o))) (cadr o) '())))
     (%make-locale language script region variant extensions)))
+
+;;> Returns \scheme{#t} iff all components of \var{a} and \var{b} are equal.
+(define (locale= a b)
+  (and (eq? (locale-language a) (locale-language b))
+       (eq? (locale-script a) (locale-script b))
+       (eq? (locale-region a) (locale-region b))
+       (eq? (locale-variant a) (locale-variant b))
+       (equal? (locale-extensions a) (locale-extensions b))))
+
+;;> Returns \scheme{#t} iff \var{a} includes \var{b}, i.e. it \var{a}
+;;> is a more general locale, differing only in components specified
+;;> in \var{b} which are unspecific in \var{a}.
+(define (locale-includes? a b)
+  (and (or (not (locale-language a))
+           (eq? (locale-language a) (locale-language b)))
+       (or (not (locale-script a))
+           (eq? (locale-script a) (locale-script b)))
+       (or (not (locale-region a))
+           (eq? (locale-region a) (locale-region b)))
+       (or (not (locale-variant a))
+           (eq? (locale-variant a) (locale-variant b)))
+       (or (not (pair? (locale-extensions a)))
+           (equal? (locale-extensions a) (locale-extensions b)))))
+
+;;> Returns the next more general locale than \var{locale} by ablating
+;;> one of its components, or \scheme{#f} if locale can't be made more
+;;> general (i.e. is already the root).  The order of generalization
+;;> follows that of the serialized string representation, first
+;;> removing the extensions if present, then the variant, then the
+;;> region, then script.
+(define (locale-generalize locale)
+  (let ((lang (locale-language locale))
+        (script (locale-script locale))
+        (region (locale-region locale))
+        (variant (locale-variant locale))
+        (extensions (locale-extensions locale)))
+    (cond
+     ((and (not lang) (not script) (not region) (not variant)
+           (not (pair? extensions)))
+      #f)
+     ((pair? extensions) (%make-locale lang script region variant '()))
+     (variant (%make-locale lang script region #f '()))
+     (region (%make-locale lang script #f #f '()))
+     (script (%make-locale lang #f #f #f '()))
+     (else (%make-locale #f #f #f #f '())))))
 
 ;;> Returns the Locale record corresponding to the given serialized
 ;;> string representation, signalling an error on invalid format.
@@ -123,7 +169,7 @@
 ;;> Returns the serialized string representation of \var{locale}.
 (define (locale->string locale)
   (string-concatenate
-   `(,(symbol->string (locale-language locale))
+   `(,(if (locale-language locale) (symbol->string (locale-language locale)) "")
      ,@(cond
         ((locale-script locale)
          => (lambda (script) `("-" ,(symbol->string script))))
