@@ -36,5 +36,11 @@
           locale= locale-includes? locale-generalize
           locale-language locale-script locale-region
           locale-variant locale-extensions
-          locale->string string->locale)
+          locale->string string->locale
+          ;; common predefined locales
+          locale:root
+          locale:arabic  locale:german locale:english locale:spanish
+          locale:french  locale:hindi  locale:italian locale:japanese
+          locale:korean  locale:dutch  locale:polish  locale:portuguese
+          locale:russian locale:thai   locale:turkish locale:chinese)
   (include "locale.scm"))

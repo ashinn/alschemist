@@ -10,7 +10,7 @@
 ;;> defaults that can be inferred from the region.
 
 (define-record-type Locale
-  (%make-locale language script region variant extensions)
+  (%%make-locale language script region variant extensions)
   locale?
   (language locale-language)
   (script locale-script)
@@ -18,21 +18,73 @@
   (variant locale-variant)
   (extensions locale-extensions))
 
+(define locale:root (%%make-locale #f #f #f #f '()))
+(define locale:arabic (%%make-locale 'ar #f #f #f '()))
+(define locale:chinese (%%make-locale 'zh #f #f #f '()))
+(define locale:dutch (%%make-locale 'nl #f #f #f '()))
+(define locale:english (%%make-locale 'en #f #f #f '()))
+(define locale:french (%%make-locale 'fr #f #f #f '()))
+(define locale:german (%%make-locale 'de #f #f #f '()))
+(define locale:hindi (%%make-locale 'hi #f #f #f '()))
+(define locale:italian (%%make-locale 'it #f #f #f '()))
+(define locale:japanese (%%make-locale 'ja #f #f #f '()))
+(define locale:korean (%%make-locale 'ko #f #f #f '()))
+(define locale:polish (%%make-locale 'pl #f #f #f '()))
+(define locale:portuguese (%%make-locale 'pt #f #f #f '()))
+(define locale:russian (%%make-locale 'ru #f #f #f '()))
+(define locale:spanish (%%make-locale 'es #f #f #f '()))
+(define locale:thai (%%make-locale 'th #f #f #f '()))
+(define locale:turkish (%%make-locale 'tr #f #f #f '()))
+
+;;> Useful predefined locales representing just a language with no
+;;> other fields, except for \scheme{locale:root} which is the empty
+;;> locale.
+;;/
+
+(define (%make-locale language script region variant extensions)
+  (if (and (not script) (not region) (not variant) (not (pair? extensions)))
+      (if (not language)
+          locale:root
+          (case language
+            ((ar) locale:arabic)
+            ((de) locale:german)
+            ((en) locale:english)
+            ((es) locale:spanish)
+            ((fr) locale:french)
+            ((hi) locale:hindi)
+            ((it) locale:italian)
+            ((ja) locale:japanese)
+            ((ko) locale:korean)
+            ((nl) locale:dutch)
+            ((pl) locale:polish)
+            ((pt) locale:portuguese)
+            ((ru) locale:russian)
+            ((th) locale:thai)
+            ((tr) locale:turkish)
+            ((zh) locale:chinese)
+            (else
+             (%%make-locale language script region variant extensions))))
+      (%%make-locale language script region variant extensions)))
+
 ;;> \procedure{(make-locale language [region variant script extensions])}
 ;;>
-;;> Returns a new locale object for the given language, with optional
-;;> region, variant, script and extensions.  The \var{language} should
-;;> be a 2 or 3 letter symbol such as \scheme{'en} or \scheme{'ain}.
-;;> The \var{region} is an ISO 3166 code, either an uppercased 2
-;;> letter symbol such as \scheme{'US} or \scheme{'FR} or a 3 digit
-;;> code from ISO 3166-1 or UN M49 such as \scheme{029} (Caribbean).
-;;> The \var{variant} is 5-8 letter language variant such as
-;;> \scheme{'polyton} for Polytonic (Ancient) Greek.  The \var{script}
-;;> is a 4 letter titlecased symbol such as \scheme{'Latn} (Latin),
-;;> \scheme{'Cyrl} (Cyrillic), or \scheme{'Jpan} (Han + Hiragana +
-;;> Katakana).  The \var{extensions} are an alist whose keys are
-;;> single letter symbols (currently only \scheme{'u} and \scheme{'x}
-;;> are defined) with subtag string values.
+;;> Returns an immutable locale object for the given language, with
+;;> optional region, variant, script and extensions.  The
+;;> \var{language} should be a 2 or 3 letter symbol such as
+;;> \scheme{'en} or \scheme{'ain}.  The \var{region} is an ISO 3166
+;;> code, either an uppercased 2 letter symbol such as \scheme{'US} or
+;;> \scheme{'FR} or a 3 digit code from ISO 3166-1 or UN M49 such as
+;;> \scheme{029} (Caribbean).  The \var{variant} is a 5-8 letter
+;;> language variant such as \scheme{'polyton} for Polytonic (Ancient)
+;;> Greek.  The \var{script} is a 4 letter titlecased symbol such as
+;;> \scheme{'Latn} (Latin), \scheme{'Cyrl} (Cyrillic), or
+;;> \scheme{'Jpan} (Han + Hiragana + Katakana).  The \var{extensions}
+;;> are an alist whose keys are single letter symbols (currently only
+;;> \scheme{'u} and \scheme{'x} are defined) with subtag string
+;;> values.
+;;>
+;;> The implementation may intern or otherwise coalesce locale objects
+;;> with the same values.
 ;;>
 ;;> Note the order of the arguments differs from the serialized string
 ;;> representation (moving \var{script} after \var{region} and
@@ -76,10 +128,10 @@
 
 ;;> Returns the next more general locale than \var{locale} by ablating
 ;;> one of its components, or \scheme{#f} if locale can't be made more
-;;> general (i.e. is already the root).  The order of generalization
-;;> follows that of the serialized string representation, first
-;;> removing the extensions if present, then the variant, then the
-;;> region, then script.
+;;> general (i.e. is already \scheme{locale:root}).  The order of
+;;> generalization follows that of the serialized string
+;;> representation, first removing the extensions if present, then the
+;;> variant, then the region, then script.
 (define (locale-generalize locale)
   (let ((lang (locale-language locale))
         (script (locale-script locale))
@@ -94,7 +146,7 @@
      (variant (%make-locale lang script region #f '()))
      (region (%make-locale lang script #f #f '()))
      (script (%make-locale lang #f #f #f '()))
-     (else (%make-locale #f #f #f #f '())))))
+     (else locale:root))))
 
 ;;> Returns the Locale record corresponding to the given serialized
 ;;> string representation, signalling an error on invalid format.

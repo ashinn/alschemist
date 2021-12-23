@@ -47,6 +47,7 @@
                                        (string->locale "hi-Latn-IN")))
         (test-assert (locale-includes? (make-locale 'hi 'IN)
                                        (string->locale "hi-Latn-IN")))
+        (test-assert (locale-includes? (make-locale #f) locale:english))
         (test-not (locale-includes? (string->locale "hi-Latn-IN")
                                     (make-locale 'hi 'IN)))
         (test "hi-Latn-IN"
@@ -61,5 +62,5 @@
         (test ""
             (locale->string
              (locale-generalize (string->locale "hi"))))
-        (test-not (locale-generalize (string->locale "")))
+        (test-not (locale-generalize locale:root))
         ))))
