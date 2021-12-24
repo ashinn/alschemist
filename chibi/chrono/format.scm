@@ -213,11 +213,12 @@
        (else
         (return (lambda (t out) (display x out))))))))
 
-(define (temporal->string t fmt . o)
-  ((temporal-formatter fmt
-                       (temporal-chronology t)
-                       (if (pair? o) (car o) default-locale))
-   t ))
+(define (temporal->string t . o)
+  (let ((chronology (temporal-chronology t)))
+    (let-optionals o ((fmt (chronology-format chronology))
+                      (locale default-locale))
+      ((temporal-formatter fmt chronology locale)
+       t))))
 
 (define (parse-integer str sc fixed-len pass fail)
   (let lp ((sc sc)

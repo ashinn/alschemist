@@ -102,7 +102,11 @@
                 (temporal->string
                  dt
                  '(day-of-week-name " the " day (nth day) " of " month-name
-                                    ", " year))))
+                                    ", " year)))
+            (test "2021-09-08"
+                (temporal->string
+                 (temporal-in-chronology dt chronology:gregorian-date)))
+            )
           (test-group "parsing"
             (define-syntax test-parse
               (syntax-rules ()
@@ -159,6 +163,16 @@
                         "Wednesday the 8th of September, 2021"
                         '(day-of-week-name " the " day (nth day)
                                            " of " month-name ", " year))
+            (test-parse `((year . 2021) (month . 9) (day . 8))
+                        "Thursday the 8th of September, 2021"
+                        '(day-of-week-name " the " day (nth day)
+                                           " of " month-name ", " year))
+            (test-error
+             (string->temporal
+              "Thursday the 8th of September, 2021"
+              '(day-of-week-name " the " day (nth day)
+                                 " of " month-name ", " year)
+              chronology:gregorian-date #t))
             (test-error (string->temporal "" '(year month day)))
             (test-error (string->temporal "1" '(year month day)))
             (test-error (string->temporal "12" '(year month day))))
