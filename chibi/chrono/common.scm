@@ -195,15 +195,16 @@
   (constructor make-datetime)
   (predicate datetime?)
   (fields
-   (time-zone datetime-zone)
-   (year datetime-year -inf.0 +inf.0)
-   (month datetime-month 1 12)
-   (day datetime-day 1 28 #f (lambda (tz y m) (month-day-upper-bound y m)))
-   (hour datetime-hour 0 23)
-   (minute datetime-minute 0 59)
-   (second datetime-second 0 59)
-   (nanosecond datetime-nanosecond 0 999999999)
-   (fold datetime-fold 0 1))
+   (time-zone datetime-zone (default time-zone:utc))
+   (year datetime-year (lower -inf.0) (upper +inf.0))
+   (month datetime-month (lower 1) (upper 12))
+   (day datetime-day (lower 1) (upper 28)
+        (get-upper (lambda (tz y m) (month-day-upper-bound y m))))
+   (hour datetime-hour (lower 0) (upper 23))
+   (minute datetime-minute (lower 0) (upper 59))
+   (second datetime-second (lower 0) (upper 59))
+   (nanosecond datetime-nanosecond (lower 0) (upper 999999999))
+   (fold datetime-fold (lower 0) (upper 1)))
   (virtual
    (day-of-week
     (lambda (t)
@@ -221,54 +222,63 @@
   (to-instant
    gregorian->instant)
   (from-instant
-   instant->gregorian))
+   instant->gregorian)
+  (format
+   '(year "-" (fix0 2 month) "-" (fix0 2 day) "T"
+          (fix0 2 hour) ":" (fix0 2 minute) ":" (fix0 2 second))))
 
 (define-chronology chronology:gregorian-date
   (record Date)
   (constructor make-date)
   (predicate date?)
   (fields
-   (year date-year -inf.0 +inf.0)
-   (month date-month 1 12)
-   (day date-day 1 28 #f month-day-upper-bound))
+   (year date-year (lower -inf.0) (upper +inf.0))
+   (month date-month (lower 1) (upper 12))
+   (day date-day (lower 1) (upper 28) (get-upper month-day-upper-bound)))
   (virtual
    (day-of-week
     (lambda (t)
-      (day-of-week (datetime-year t) (datetime-month t) (datetime-day t))))
+      (day-of-week (date-year t) (date-month t) (date-day t))))
    (days-in-month
     (lambda (t)
-      (month-day-upper-bound (datetime-year t) (datetime-month t))))
+      (month-day-upper-bound (date-year t) (date-month t))))
    (julian-day
     (lambda (t)
       (gregorian->julian-day-number
-       (datetime-year t) (datetime-month t) (datetime-day t)))))
+       (date-year t) (date-month t) (date-day t)))))
   (to-instant
    gregorian-date->instant)
   (from-instant
-   instant->gregorian-date))
+   instant->gregorian-date)
+  (format
+   '(year "-" (fix0 2 month) "-" (fix0 2 day))))
 
 (define-chronology chronology:time
   (record Time)
   (constructor make-time)
   (predicate time?)
   (fields
-   (hour time-hour 0 23)
-   (minute time-minute 0 59)
-   (second time-second 0 59)
-   (nanosecond time-nanosecond 0 999999999)))
+   (hour time-hour (lower 0) (upper 23))
+   (minute time-minute (lower 0) (upper 59))
+   (second time-second (lower 0) (upper 59))
+   (nanosecond time-nanosecond (lower 0) (upper 999999999)))
+  (format
+   '((fix0 2 hour) ":" (fix0 2 minute) ":" (fix0 2 second))))
 
 (define-chronology chronology:julian-date
   (record Julian-Date)
   (constructor make-julian-date)
   (predicate julian-date?)
   (fields
-   (year julian-date-year -inf.0 +inf.0)
-   (month julian-date-month 1 12)
-   (day julian-date-day 1 28 #f month-day-upper-bound))
+   (year julian-date-year (lower -inf.0) (upper +inf.0))
+   (month julian-date-month (lower 1) (upper 12))
+   (day julian-date-day (lower 1) (upper 28) (get-upper month-day-upper-bound)))
   (to-instant
    julian-date->instant)
   (from-instant
-   instant->julian-date))
+   instant->julian-date)
+  (format
+   '(year "-" (fix0 2 month) "-" (fix0 2 day))))
 
 (unless (default-chronology)
   (default-chronology chronology:gregorian))

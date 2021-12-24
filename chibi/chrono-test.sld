@@ -69,7 +69,16 @@
             (test `((year . 2022) (month . 1) (day . 1))
                 (temporal->alist
                  (temporal-adjust (make-date 2021 12 31) 'day 1)))
-            )
+            (test '((year . 2021) (month . 9) (day . 8))
+                (temporal->alist
+                 (alist->temporal
+                  '((day . 8) (month . 9) (year . 2021) (day-of-week . 4))
+                  chronology:gregorian-date)))
+            (test-error
+             (alist->temporal
+              '((day . 8) (month . 9) (year . 2021) (day-of-week . 4))
+              chronology:gregorian-date
+              #t)))
           (test-group "time-zones"
             (test `(,time-zone:utc 2021 3 1 0 30 0 0 0)
                 (temporal->list
@@ -82,6 +91,10 @@
             (test "2021/09/08"
                 (temporal->string dt
                                   '(year "/" (fix0 2 month) "/" (fix0 2 day))))
+            (test "3 2021/09/08"
+                (temporal->string
+                 dt
+                 '(day-of-week " " year "/" (fix0 2 month) "/" (fix0 2 day))))
             (test "8th of September, 2021"
                 (temporal->string dt
                                   '(day (nth day) " of " month-name ", " year)))
@@ -98,9 +111,11 @@
                 ((test-parse alist str fmt chrono)
                  (test-parse alist str fmt chrono locale:english))
                 ((test-parse alist str fmt chrono locale)
+                 (test-parse alist str fmt chrono locale #f))
+                ((test-parse alist str fmt chrono locale strict?)
                  (test alist
                      (temporal->alist
-                      (string->temporal str fmt chrono locale))))))
+                      (string->temporal str fmt chrono locale strict?))))))
             (test-parse `((year . 2021) (month . 10) (day . 22))
                         "2021/10/22"
                         '(year "/" month "/" day))
@@ -110,19 +125,43 @@
             (test-parse `((year . 2021) (month . 10) (day . 2))
                         "20211002"
                         '(year (fix0 2 month) (fix0 2 day)))
+            (test-parse `((year . 1) (month . 2) (day . 3))
+                        "123"
+                        '(year month day))
             (test-parse `((year . 20213) (month . 1) (day . 3))
                         "2021313"
                         '(year month day))
             (test-parse `((year . 20213) (month . 1) (day . 20))
                         "20213120"
                         '(year month day))
+            ;; (test-parse `((year . 2021) (month . 12) (day . 30))
+            ;;             "20211230"
+            ;;             '(year month day))
             (test-parse `((year . 2021) (month . 10) (day . 22))
                         "October 22 2021"
                         '(month-name " " day " " year))
             (test-parse `((year . 2021) (month . 9) (day . 8))
+                        "Wednesday 2021/9/8"
+                        '(day-of-week-name " " year "/" month "/" day))
+            (test-parse `((year . 2021) (month . 9) (day . 8))
+                        "4 2021/9/8"
+                        '(day-of-week " " year "/" month "/" day)
+                        chronology:gregorian-date)
+            (test-error
+             (string->temporal
+              "4 2021/9/8"
+              '(day-of-week " " year "/" month "/" day)
+              chronology:gregorian-date locale:english #t))
+            (test-parse `((year . 2021) (month . 9) (day . 8))
+                        "Friday 2021/9/8"
+                        '(day-of-week-name " " year "/" month "/" day))
+            (test-parse `((year . 2021) (month . 9) (day . 8))
                         "Wednesday the 8th of September, 2021"
                         '(day-of-week-name " the " day (nth day)
-                                           " of " month-name ", " year)))
+                                           " of " month-name ", " year))
+            (test-error (string->temporal "" '(year month day)))
+            (test-error (string->temporal "1" '(year month day)))
+            (test-error (string->temporal "12" '(year month day))))
           (test-group "julian"
             (test "2022/1/7"
                 (temporal->string

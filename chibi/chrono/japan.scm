@@ -355,12 +355,12 @@
   (constructor make-japanese-time)
   (predicate japanese-time?)
   (fields
-   (era ja-time-era 0 max-nengo)
-   (year ja-time-year -inf.0 +inf.0
-         (lambda (era) (if (zero? era) -inf.0 1))
-         japanese-era-max-year)
-   (month ja-time-month 1 12)
-   (day ja-time-day 1 28 #f ja-month-day-upper-bound)  ;; TODO: gregorian jump
+   (era ja-time-era (lower 0) (upper max-nengo))
+   (year ja-time-year (lower -inf.0) (upper +inf.0)
+         (get-lower (lambda (era) (if (zero? era) -inf.0 1)))
+         (get-upper japanese-era-max-year))
+   (month ja-time-month (lower 1) (upper 12))
+   (day ja-time-day (lower 1) (upper 28) (get-upper ja-month-day-upper-bound))
    ;; (hour ja-time-hour 0 23)
    ;; (minute ja-time-minute 0 59)
    ;; (second ja-time-second 0 59)
@@ -383,4 +383,7 @@
   (to-instant
    japanese-time->instant)
   (from-instant
-   instant->japanese-time))
+   instant->japanese-time)
+  (format
+   '(year "-" month "-" day))
+  )

@@ -85,7 +85,12 @@
   temporal-macro?
   (proc temporal-macro-proc))
 
-;; invertible, returning first argument
+(define-record-type Virtual-Field
+  (make-virtual-field name proc)
+  virtual-field?
+  (name virtual-field-name)
+  (proc virtual-field-proc))
+
 (define-record-type Unparseable
   (%make-unparseable unparse parse min-length max-length)
   unparseable?
@@ -140,7 +145,7 @@
                  (analyze y))))
        ((and (symbol? x) (chronology-get-field chrono x)))
        ((and (symbol? x) (assq x (chronology-virtual chrono)))
-        => (lambda (cell) (cdr cell)))
+        => (lambda (cell) (make-virtual-field x (cdr cell))))
        ((chrono-field? x) x)
        ((unparseable? x) x)
        ((temporal-macro? x) x)
@@ -173,6 +178,8 @@
                   (cond
                    ((chrono-field? a)
                     ((chrono-field-getter a) t))
+                   ((virtual-field? a)
+                    ((virtual-field-proc a) t))
                    ((procedure? a)
                     (a t))
                    ((and (pair? a) (unparseable? (car a)))
@@ -189,8 +196,8 @@
        ((chrono-field? x)
         (let ((get (chrono-field-getter x)))
           (return (lambda (t out) (display (get t) out)))))
-       ((procedure? x)
-        (return (lambda (t out) (display ((x t) out)))))
+       ((virtual-field? x)
+        (return (lambda (t out) (display ((virtual-field-proc x) t) out))))
        ((and (pair? x) (unparseable? (car x)))
         (return (lambda (t out)
                   (display (apply-format t (car x) (cdr x))
@@ -295,6 +302,15 @@
              (pass (cons (cons name i) ls) str sc fail))
            fail)))))
 
+(define (virtual-field-parser virtual-field)
+  (let ((name (virtual-field-name virtual-field)))
+    (lambda (ls str sc pass fail)
+      (parse-integer
+       str sc #f
+       (lambda (i str sc fail)
+         (pass (cons (cons name i) ls) str sc fail))
+       fail))))
+
 (define temporal-names
   `((,(make-locale 'en)
      (day-of-week-names
@@ -385,8 +401,8 @@
 (define (temporal-parser fmt . o)
   (let-optionals* o ((chrono (default-chronology))
                      (locale default-locale)
-                     (lookup (make-locale-lookup temporal-names))
-                     (strict? #f))
+                     (strict? #f)
+                     (lookup (make-locale-lookup temporal-names)))
     ;; A compiled parser is a CPS-style procedure of the form:
     ;;   (parse ls str sc pass fail)
     ;; where ls is the accumulated alist of temporal key/values,
@@ -398,30 +414,30 @@
     ;; In addition, we track optional validators for virtual fields,
     ;; such as day of week, and the compile step returns both.
     (let compile ((x (temporal-analyze fmt chrono locale lookup))
-                  (validate '())
                   (return
                    ;; The final return wraps the parser combinators in
                    ;; the initial procedure of one string argument
                    ;; which kicks off the parsing, converts the result
                    ;; to a temporal, and validates it.
-                   (lambda (f validate)
-                     (let ((pass (lambda (ls str sc fail) ls))
-                           (fail (lambda (msg str)
-                                   (error "couldn't parse temporal" msg str))))
-                       (if (and strict? (pair? validate))
-                          (lambda (str)
-                            (let* ((sc (string-cursor-start str))
-                                   (res
-                                    (alist->temporal
-                                     (f '() str sc pass fail)
-                                     chrono)))
-                              (unless (every validate res)
-                                (error "validation failed" res validate))
-                              res))
-                          (lambda (str)
-                            (alist->temporal
-                             (f '() str (string-cursor-start str) pass fail)
-                             chrono)))))))
+                   (lambda (f)
+                     (let ((pass
+                            (lambda (ls str sc fail)
+                              (if (string-cursor>=? sc (string-cursor-end str))
+                                  ls
+                                  (fail "trailing data in string" str))))
+                           (fail
+                            (lambda (msg str)
+                              (error "couldn't parse temporal" msg str))))
+                       (lambda (str)
+                         (try-alist->temporal
+                          (f '() str (string-cursor-start str) pass fail)
+                          values
+                          (lambda (res err)
+                            (if strict?
+                                (fail (apply string-append (map ->string err))
+                                      str)
+                                res))
+                          chrono))))))
       (cond
        ;; ((and (pair? x) (pair? (cdr x)) (pair? (car x)) (pair? (cadr x))
        ;;       (unparseable? (caar x)) (unparseable? (car (cadr x)))
@@ -444,11 +460,10 @@
                          (parse str sc
                                 (lambda (substr sc fail)
                                   (pass ls str sc fail))
-                                fail))
-                      validate)))
+                                fail)))))
             ((1)
-             (let-values (((parse-field _) (compile (car fields) '() values))
-                          ((parse) (apply (unparseable-parse (car x)) (cdr x))))
+             (let ((parse-field (compile (car fields) values))
+                   (parse (apply (unparseable-parse (car x)) (cdr x))))
                (return (lambda (ls str sc pass fail)
                          (parse str sc
                                 (lambda (substr sc fail)
@@ -458,29 +473,24 @@
                                                (lambda (ls substr subsc fail)
                                                  (pass ls str sc fail))
                                                fail))
-                                fail))
-                       validate)))
+                                fail)))))
             (else
              (error "can't parse more than one field with unparseable" x)))))
        ((pair? x)
         ;; Otherwise assume a pair is an implicit sequence.
-        (let*-values
-            (((parse-car validate2) (compile (car x) validate values))
-             ((parse-cdr validate3) (compile (cdr x) validate2 values)))
+        (let ((parse-car (compile (car x) values))
+              (parse-cdr (compile (cdr x) values)))
           (return (lambda (ls str sc pass fail)
                     (parse-car ls str sc
                                (lambda (ls str sc fail)
                                  (parse-cdr ls str sc pass fail))
-                               fail))
-                  validate3)))
+                               fail)))))
        ((null? x)
-        (return (lambda (ls str sc pass fail) (pass ls str sc fail))
-                validate))
-       ((procedure? x)
-        (return (lambda (ls str sc pass fail) (pass ls str sc fail))
-                (cons x validate)))
+        (return (lambda (ls str sc pass fail) (pass ls str sc fail))))
        ((chrono-field? x)
-        (return (chrono-field-parser x) validate))
+        (return (chrono-field-parser x)))
+       ((virtual-field? x)
+        (return (virtual-field-parser x)))
        ((string? x)
         (return
          (lambda (ls str sc pass fail)
@@ -491,11 +501,10 @@
               (fail (string-append
                      "expected value not found at "
                      (number->string (string-cursor->index str sc)) ": " x)
-                    str))))
-         validate))
+                    str))))))
        ((number? x)
         ;; TODO: allow alternate numeric formats
-        (compile (number->string x) validate return))
+        (compile (number->string x) return))
        (else
         (error "unknown locale parser object" locale x))))))
 

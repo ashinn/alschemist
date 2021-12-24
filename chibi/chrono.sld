@@ -16,7 +16,7 @@
    temporal-chronology temporal-in-chronology temporal-fields
    temporal->instant instant->temporal
    temporal->list list->temporal
-   temporal->alist alist->temporal
+   temporal->alist alist->temporal try-alist->temporal
    ;; defining new chronologies
    define-chronology default-chronology
    ;; chronology internals

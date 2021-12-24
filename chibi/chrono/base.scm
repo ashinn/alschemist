@@ -14,19 +14,22 @@
 ;; system uses leap second smoothing (and which window), the times are
 ;; in fact not ambiguous and we can recover accurately.
 (define-record-type Chronology
-  (make-chronology name fields virtual constructor to-instant from-instant)
+  (make-chronology name fields virtual constructor to-instant from-instant
+                   format messages)
   chronology?
   (name chronology-name)
   (fields chronology-fields)
   (virtual chronology-virtual)
   (constructor chronology-constructor)
   (to-instant chronology-to-instant)
-  (from-instant chronology-from-instant))
+  (from-instant chronology-from-instant)
+  (format chronology-format)
+  (messages chronology-messages))
 
 (define default-chronology (make-parameter #f))
 
 (define-record-type Chrono-Field
-  (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster)
+  (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default)
   chrono-field?
   (name chrono-field-name)
   (getter chrono-field-getter)
@@ -35,12 +38,13 @@
   (get-lb chrono-field-get-lb)
   (get-ub chrono-field-get-ub)
   (updater chrono-field-updater)
-  (adjuster chrono-field-adjuster))
+  (adjuster chrono-field-adjuster)
+  (default chrono-field-default))
 
 (define (make-chrono-field name getter . o)
   (let-optionals* o ((lb #f) (ub #f) (get-lb #f) (get-ub #f)
-                     (updater #f) (adjuster #f))
-    (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster)))
+                     (updater #f) (adjuster #f) (default #f))
+    (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default)))
 
 (define (chrono-field-lower-bound field reverse-prev-values)
   (cond
@@ -89,15 +93,39 @@
                    (<= value (apply get-ub (reverse reverse-prev-values)))))
              (else #t))))
 
+(define-syntax chrono-field
+  (syntax-rules (lower upper get-lower get-upper updater adjuster default)
+    ((_ name get lb ub get-lb get-ub up adj dflt ())
+     (%make-chrono-field name get lb ub get-lb get-ub up adj dflt))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((lower x) . rest))
+     (chrono-field name get x ub get-lb get-ub up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((upper x) . rest))
+     (chrono-field name get lb x get-lb get-ub up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((get-lower x) . rest))
+     (chrono-field name get lb ub x get-ub up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((get-upper x) . rest))
+     (chrono-field name get lb ub get-lb x up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((updater x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((adjuster x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((default x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj x rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt ((other . x) . rest))
+     (syntax-error "unknown chrono-field attribute" (other . x)))
+    ))
+
 (define-syntax define-chrono
   (syntax-rules (record constructor predicate fields virtual
-                        to-instant from-instant)
+                        to-instant from-instant format messages)
     ((define-chrono name
        instance-rtd instance-constructor instance-predicate
        ((field getter spec ...) ...)
        ((vfield vgetter) ...)
        to
        from
+       fmt
+       msg
        ())
      (begin
        (define-record-type instance-rtd
@@ -105,35 +133,44 @@
          instance-predicate
          (field getter) ...)
        (define name
-         (let ((res (make-chronology
-                     'name
-                     (list (make-chrono-field 'field getter spec ...) ...)
-                     (list (cons 'vfield vgetter) ...)
-                     instance-constructor
-                     to
-                     from)))
+         (let ((res
+                (make-chronology
+                 'name
+                 (list
+                  (chrono-field 'field getter #f #f #f #f #f #f #f (spec ...))
+                  ...)
+                 (list (cons 'vfield vgetter) ...)
+                 instance-constructor
+                 to
+                 from
+                 fmt
+                 msg)))
            (hash-table-set! chronologies instance-rtd res)
            res))))
-    ((define-chrono name r c p f v to from ((record rtd) . rest))
-     (define-chrono name rtd c p f v to from rest))
-    ((define-chrono name r c p f v to from ((constructor cons) . rest))
-     (define-chrono name r cons p f v to from rest))
-    ((define-chrono name r c p f v to from ((predicate pred) . rest))
-     (define-chrono name r c pred f v to from rest))
-    ((define-chrono name r c p f v to from ((fields . ls) . rest))
-     (define-chrono name r c p ls v to from rest))
-    ((define-chrono name r c p f v to from ((virtual . ls) . rest))
-     (define-chrono name r c p f ls to from rest))
-    ((define-chrono name r c p f v to from ((to-instant to-i) . rest))
-     (define-chrono name r c p f v to-i from rest))
-    ((define-chrono name r c p f v to from ((from-instant from-i) . rest))
-     (define-chrono name r c p f v to from-i rest))
+    ((define-chrono name r c p f v to from fmt msg ((record rtd) . rest))
+     (define-chrono name rtd c p f v to from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((constructor cons) . rest))
+     (define-chrono name r cons p f v to from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((predicate pred) . rest))
+     (define-chrono name r c pred f v to from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((fields . ls) . rest))
+     (define-chrono name r c p ls v to from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((virtual . ls) . rest))
+     (define-chrono name r c p f ls to from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((to-instant to-i) . rest))
+     (define-chrono name r c p f v to-i from fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((from-instant fi) . rest))
+     (define-chrono name r c p f v to fi fmt msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((format fo) . rest))
+     (define-chrono name r c p f v to from fo msg rest))
+    ((define-chrono name r c p f v to from fmt msg ((messages . ls) . rest))
+     (define-chrono name r c p f v to from fmt `ls rest))
     ))
 
 (define-syntax define-chronology
   (syntax-rules ()
     ((define-chronology name . rest)
-     (define-chrono name #f #f #f () () #f #f rest))))
+     (define-chrono name #f #f #f () () #f #f #f '() rest))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -219,7 +256,7 @@
                (apply (chronology-constructor chronology)
                       `(,@(reverse prev) ,value ,@(cdr ls)))
                (error "field value invalidates other field"
-                      t field value (car fields))))
+                      t ls field value prev (chrono-field-name (car fields)))))
           (else
            (error "field value out of range" t field value))))
         (else
@@ -310,24 +347,71 @@
     (assert (chronology? chronology))
     (apply (chronology-constructor chronology) ls)))
 
-(define (alist->temporal ls . o)
+;; Like assq but returns a pair of the (reversed) left part of the
+;; alist preceding the matched cell, and the matched cell.
+(define (assq-split key orig-ls)
+  (let lp ((ls1 orig-ls))
+    (cond ((null? ls1) #f)
+          ((eq? key (caar ls1))
+           (let lp ((ls2 orig-ls) (left '()))
+             (cond ((eq? ls2 ls1) (cons left ls1))
+                   ((null? ls2) (error "can't happen"))
+                   (else (lp (cdr ls2) (cons (car ls2) left))))))
+          (else (lp (cdr ls1))))))
+
+(define (try-alist->temporal ls pass fail . o)
   (let ((chronology (if (pair? o) (car o) (default-chronology))))
+    (define (finish rev-args ls)
+      (let ((res (list->temporal (reverse rev-args) chronology)))
+        (let lp ((ls ls))
+          (cond
+           ((null? ls) (pass res))
+           ((assq (caar ls) (chronology-virtual chronology))
+            => (lambda (cell)
+                 (let ((expected ((cdr cell) res)))
+                   (if (equal? (cdar ls) expected)
+                       (lp (cdr ls))
+                       (fail res
+                             (list "invalid virtual field, expected "
+                                   expected " but got " (cdar ls)))))))
+           (else
+            (fail res (list "unknown field in chronology" chronology (car ls)))
+            )))))
     (assert (chronology? chronology))
     (let lp ((fields (chronology-fields chronology))
-             (args '()))
+             (args '())
+             (ls ls))
       (cond
        ((null? fields)
-        (list->temporal (reverse args) chronology))
-       ((assq (chrono-field-name (car fields)) ls)
-        => (lambda (cell)
-             (lp (cdr fields) (cons (cdr cell) args))))
+        (finish args ls))
+       ((assq-split (chrono-field-name (car fields)) ls)
+        => (lambda (left+right)
+             (let ((left (car left+right))
+                   (right (cdr left+right)))
+               (lp (cdr fields)
+                   (cons (cdar right) args)
+                   (append left (cdr right))))))
        ((chrono-field-get-lb (car fields))
         => (lambda (get-lb)
-             (lp (cdr fields) (cons (apply get-lb (reverse args)) args))))
+             (lp (cdr fields)
+                 (cons (apply get-lb (reverse args)) args)
+                 ls)))
        ((chrono-field-lb (car fields))
         => (lambda (lb)
-             (lp (cdr fields) (cons lb args))))
+             (lp (cdr fields) (cons lb args) ls)))
+       ((chrono-field-default (car fields))
+        => (lambda (default)
+             (lp (cdr fields) (cons default args) ls)))
        (else  ;; hope the constructor has the proper defaults
-        (list->temporal (reverse args) chronology))))))
+        (finish args ls))))))
+
+(define (alist->temporal ls . o)
+  (let-optionals o ((chronology (default-chronology))
+                    (strict? #f))
+    (try-alist->temporal
+     ls
+     values
+     (lambda (res err) (if (and res (not strict?)) res (apply error err)))
+     chronology)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
