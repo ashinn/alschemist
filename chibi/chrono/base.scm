@@ -1,18 +1,35 @@
 
-;; Why have a notion of chronologies at all, as opposed to having
-;; separate date and time classes for each separate calendar?
-;;   1. standardized conversions (via a tai time offset)
-;;   2. access via field names, allowing generic code such as parser/formatters
-;;   3. better abstraction and sharing of code
-;;
-;; Note conversions are based on TAI time because it is unambiguous
-;; (unix time is non-monotonic and represents two seconds with the
-;; same value) and simplifies interval artihmetic.  R7RS
-;; (current-second) returns TAI time, which we scale to nanoseconds
-;; for convenience.  Unfortunately some systems make it difficult to
-;; derive TAI time from the system clock, however if we know the
-;; system uses leap second smoothing (and which window), the times are
-;; in fact not ambiguous and we can recover accurately.
+;;> The R7RS small language provides a single notion of time in
+;;> \scheme{current-second}, the number of seconds (possibly negative,
+;;> possibly inexact) since the POSIX epoch.  This is simple and
+;;> efficient, and since it uses TAI time (i.e. counts leap seconds),
+;;> is unambiguous and able to express any time point.  However, it is
+;;> difficult for humans to work with directly, since we are
+;;> accustomed to dividing time into convenient units with calendars
+;;> and clocks.
+;;>
+;;> This library builds on these seconds, which we call "instants," by
+;;> adding two types: "chronologies," representing a structuring of
+;;> time with a given calendar and/or clock, and "temporals,"
+;;> representing an instant within a chronology.  We further provide
+;;> generic utilities for comparisons and modifications to these
+;;> temporals within any chronology.
+;;>
+;;> Note the libraries are factored for clean and minimal
+;;> dependencies, and this base library has no notion of a default
+;;> chronology.  The standard Gregorian chronology is provided by
+;;> \scheme{(chibi chrono common)} and re-exported by
+;;> \scheme{(chibi chrono)}, but other chronologies are available.
+;;>
+;;> You may ask, why have a notion of chronologies at all, as opposed
+;;> to having separate date and time classes for each separate
+;;> calendar?  The generic API allows a number of conveniences, such as:
+;;>
+;;> \itemlist[
+;;>  \item[standardized conversions (via a tai time offset)]
+;;>  \item[access via field names, allowing generic code such as parser/formatters]
+;;>  \item[better abstraction and sharing of code]]
+
 (define-record-type Chronology
   (make-chronology name fields virtual constructor to-instant from-instant
                    format messages)
@@ -172,12 +189,17 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;> Returns the exact current number of nanoseconds since the POSIX epoch.
 (define (current-nanosecond)
   (exact (floor (* 1e9 (current-second)))))
 
+;;> Returns \scheme{#t} iff \var{x} is a tempora.
 (define (temporal? x)
   (and (temporal-chronology x) #t))
 
+;;> Returns the value of \var{field} in the temporal \var{t}, or
+;;> signals an error if \var{field} is unknown in \var{t}'s
+;;> chronology.
 (define (temporal-ref t field)
   (let lp ((fields (chronology-fields (temporal-chronology t))))
     (cond
@@ -233,7 +255,14 @@
 (define (temporal>=? a b)
   (temporal-cmp >= a b))
 
-;; signals an error on out of range
+;;> Absolute ordering procedures for temporals, which need not use the
+;;> same chronology.
+;;/
+
+;;> Returns a new temporal which is the same as \var{t} but setting
+;;> the given \var{field}s to thei \var{value}s.  Signals an error if
+;;> the result is not valid within \var{t}'s chronology, such as
+;;> having too many days in the resulting month.
 (define (temporal-update t field value . o)
   (let ((chronology (temporal-chronology t)))
     ;; TODO: apply all updates before validation
@@ -288,7 +317,11 @@
      (else
       (cons value prev-values)))))
 
-;; borrows/carries from larger fields as needed, caps field accordingly
+;;> Returns a new temporal which is the same as \var{t}, but
+;;> incrementing \var{field} by the given amount, borrowing or
+;;> carrying from larger fields as needed and capping lesser fields to
+;;> their maximum value.  Correspondingly, unlike
+;;> \scheme{temporal-update}, won't signal an out of range error.
 (define (temporal-adjust t field increment)
   (let ((chronology (temporal-chronology t)))
     (let lp ((ls (temporal->list t))
@@ -316,33 +349,46 @@
 
 (define chronologies (make-hash-table eq?))
 
+;;> Returns the chronology associated with temporal \var{t}.
 (define (temporal-chronology t)
   (hash-table-ref chronologies (record-rtd t)))
 
+;;> Returns the lsit of chronology fields for temporal \var{t}.
 (define (temporal-fields t)
   (chronology-fields (temporal-chronology t)))
 
+;;> Converts temporal \var{t} to an instant.
 (define (temporal->instant t)
   (let ((chronology (hash-table-ref chronologies (record-rtd t))))
     ((chronology-to-instant chronology) t)))
 
+;;> Converts \var{instant} to a temporal in \var{chronology}.
 (define (chronology-instant->temporal instant chronology)
   (assert (chronology? chronology))
   ((chronology-from-instant chronology) instant))
 
+;;> Converts temporal \var{t} to a temporal in a (possibly different)
+;;> \var{chronology}.
 (define (temporal-in-chronology t chronology)
   (chronology-instant->temporal (temporal->instant t) chronology))
 
+;;> Returns an ordered list of the field values of temporal \var{t}.
+;;> By convention, fields are in "big-endian" order (i.e. largest
+;;> units such as years come first).
 (define (temporal->list t)
   (map (lambda (field) ((chrono-field-getter field) t))
        (temporal-fields t)))
 
+;;> Returns an alist of the field names and values of temporal
+;;> \var{t}, in the same order as \scheme{temporal->list}.
 (define (temporal->alist t)
   (map (lambda (field)
          (cons (chrono-field-name field)
                ((chrono-field-getter field) t)))
        (temporal-fields t)))
 
+;;> Returns a temporal in \var{chronology} with field values in
+;;> \var{ls} in the same order as \scheme{temporal->list}.
 (define (chronology-list->temporal ls chronology)
   (assert (chronology? chronology))
   (apply (chronology-constructor chronology) ls))
@@ -359,6 +405,12 @@
                    (else (lp (cdr ls2) (cons (car ls2) left))))))
           (else (lp (cdr ls1))))))
 
+;;> Attempts to convert the given alist of field names to values to a
+;;> temporal in \var{chronology}.  Virtual fields in the alist are not
+;;> normative, but used for validation, e.g. if day-of-week is 0 and
+;;> the result from other fields results in a temporal not on a
+;;> Sunday, we fail.  Calls \var{(pass result)} if successful, and
+;;> \var{(fail result msg)} otherwise.
 (define (chronology-try-alist->temporal ls pass fail chronology)
   (define (finish rev-args ls)
     (let ((res (chronology-list->temporal (reverse rev-args) chronology)))
@@ -404,6 +456,9 @@
      (else ;; hope the constructor has the proper defaults
       (finish args ls)))))
 
+;;> Converts the given alist of field names to values to a temporal in
+;;> \var{chronology}.  If optional \var{strict?} is true, signals an
+;;> error if virtual fields fail to validate, otherwise ignores them.
 (define (chronology-alist->temporal ls chronology . o)
   (let-optionals o ((strict? #f))
     (chronology-try-alist->temporal

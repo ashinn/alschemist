@@ -1,5 +1,26 @@
 
-;;> Library grouping the four most common chrono libraries.
+;;> Library grouping the four core chrono libraries:
+;;>  \itemlist[
+;;>    \item[\scheme{(chibi chrono base)} - core syntax and procedures]
+;;>    \item[\scheme{(chibi chrono time-zone)} - generic time-zone procedures]
+;;>    \item[\scheme{(chibi chrono format)} - generic formatting procedures]
+;;>    \item[\scheme{(chibi chrono common)} - the gregorian and julian calendars]
+;;>  ]
+;;>
+;;> In addition, provides the following convenience procedures, which
+;;> are wrapped versions of the procedure of same name with a
+;;> \scheme{chronology-} prefix, making the \var{chronology} argument
+;;> optional and defaulting to \scheme{chronology:gregorian}:
+;;>
+;;>  \itemlist[
+;;>    \item[\scheme{instant->temporal}]
+;;>    \item[\scheme{list->temporal}]
+;;>    \item[\scheme{alist->temporal}]
+;;>    \item[\scheme{try-alist->temporal}]
+;;>    \item[\scheme{string->temporal}]
+;;>    \item[\scheme{temporal-formatter}]
+;;>    \item[\scheme{temporal-parser}]
+;;>  ]
 
 (define-library (chibi chrono)
   (import (scheme base)
@@ -85,10 +106,10 @@
     (define (string->temporal str . o)
       (let-optionals o ((chronology chronology:gregorian) . rest)
         (apply chronology-string->temporal str chronology rest)))
-    (define (temporal-parser fmt . o)
-      (let-optionals o ((chronology chronology:gregorian) . rest)
-        (apply chronology-temporal-parser fmt chronology rest)))
     (define (temporal-formatter fmt . o)
       (let-optionals o ((chronology chronology:gregorian) . rest)
         (apply chronology-temporal-formatter fmt chronology rest)))
+    (define (temporal-parser fmt . o)
+      (let-optionals o ((chronology chronology:gregorian) . rest)
+        (apply chronology-temporal-parser fmt chronology rest)))
     ))
