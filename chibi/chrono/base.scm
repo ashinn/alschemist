@@ -26,8 +26,6 @@
   (format chronology-format)
   (messages chronology-messages))
 
-(define default-chronology (make-parameter #f))
-
 (define-record-type Chrono-Field
   (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default)
   chrono-field?
@@ -328,13 +326,12 @@
   (let ((chronology (hash-table-ref chronologies (record-rtd t))))
     ((chronology-to-instant chronology) t)))
 
-(define (instant->temporal instant . o)
-  (let ((chronology (if (pair? o) (car o) (default-chronology))))
-    (assert (chronology? chronology))
-    ((chronology-from-instant chronology) instant)))
+(define (chronology-instant->temporal instant chronology)
+  (assert (chronology? chronology))
+  ((chronology-from-instant chronology) instant))
 
 (define (temporal-in-chronology t chronology)
-  (instant->temporal (temporal->instant t) chronology))
+  (chronology-instant->temporal (temporal->instant t) chronology))
 
 (define (temporal->list t)
   (map (lambda (field) ((chrono-field-getter field) t))
@@ -346,10 +343,9 @@
                ((chrono-field-getter field) t)))
        (temporal-fields t)))
 
-(define (list->temporal ls . o)
-  (let ((chronology (if (pair? o) (car o) (default-chronology))))
-    (assert (chronology? chronology))
-    (apply (chronology-constructor chronology) ls)))
+(define (chronology-list->temporal ls chronology)
+  (assert (chronology? chronology))
+  (apply (chronology-constructor chronology) ls))
 
 ;; Like assq but returns a pair of the (reversed) left part of the
 ;; alist preceding the matched cell, and the matched cell.
@@ -363,56 +359,54 @@
                    (else (lp (cdr ls2) (cons (car ls2) left))))))
           (else (lp (cdr ls1))))))
 
-(define (try-alist->temporal ls pass fail . o)
-  (let ((chronology (if (pair? o) (car o) (default-chronology))))
-    (define (finish rev-args ls)
-      (let ((res (list->temporal (reverse rev-args) chronology)))
-        (let lp ((ls ls))
-          (cond
-           ((null? ls) (pass res))
-           ((assq (caar ls) (chronology-virtual chronology))
-            => (lambda (cell)
-                 (let ((expected ((cdr cell) res)))
-                   (if (equal? (cdar ls) expected)
-                       (lp (cdr ls))
-                       (fail res
-                             (list "invalid virtual field, expected "
-                                   expected " but got " (cdar ls)))))))
-           (else
-            (fail res (list "unknown field in chronology" chronology (car ls)))
-            )))))
-    (assert (chronology? chronology))
-    (let lp ((fields (chronology-fields chronology))
-             (args '())
-             (ls ls))
-      (cond
-       ((null? fields)
-        (finish args ls))
-       ((assq-split (chrono-field-name (car fields)) ls)
-        => (lambda (left+right)
-             (let ((left (car left+right))
-                   (right (cdr left+right)))
-               (lp (cdr fields)
-                   (cons (cdar right) args)
-                   (append left (cdr right))))))
-       ((chrono-field-get-lb (car fields))
-        => (lambda (get-lb)
+(define (chronology-try-alist->temporal ls pass fail chronology)
+  (define (finish rev-args ls)
+    (let ((res (chronology-list->temporal (reverse rev-args) chronology)))
+      (let lp ((ls ls))
+        (cond
+         ((null? ls) (pass res))
+         ((assq (caar ls) (chronology-virtual chronology))
+          => (lambda (cell)
+               (let ((expected ((cdr cell) res)))
+                 (if (equal? (cdar ls) expected)
+                     (lp (cdr ls))
+                     (fail res
+                           (list "invalid virtual field, expected "
+                                 expected " but got " (cdar ls)))))))
+         (else
+          (fail res (list "unknown field in chronology" chronology (car ls)))
+          )))))
+  (assert (chronology? chronology))
+  (let lp ((fields (chronology-fields chronology))
+           (args '())
+           (ls ls))
+    (cond
+     ((null? fields)
+      (finish args ls))
+     ((assq-split (chrono-field-name (car fields)) ls)
+      => (lambda (left+right)
+           (let ((left (car left+right))
+                 (right (cdr left+right)))
              (lp (cdr fields)
-                 (cons (apply get-lb (reverse args)) args)
-                 ls)))
-       ((chrono-field-lb (car fields))
-        => (lambda (lb)
-             (lp (cdr fields) (cons lb args) ls)))
-       ((chrono-field-default (car fields))
-        => (lambda (default)
-             (lp (cdr fields) (cons default args) ls)))
-       (else  ;; hope the constructor has the proper defaults
-        (finish args ls))))))
+                 (cons (cdar right) args)
+                 (append left (cdr right))))))
+     ((chrono-field-get-lb (car fields))
+      => (lambda (get-lb)
+           (lp (cdr fields)
+               (cons (apply get-lb (reverse args)) args)
+               ls)))
+     ((chrono-field-lb (car fields))
+      => (lambda (lb)
+           (lp (cdr fields) (cons lb args) ls)))
+     ((chrono-field-default (car fields))
+      => (lambda (default)
+           (lp (cdr fields) (cons default args) ls)))
+     (else ;; hope the constructor has the proper defaults
+      (finish args ls)))))
 
-(define (alist->temporal ls . o)
-  (let-optionals o ((chronology (default-chronology))
-                    (strict? #f))
-    (try-alist->temporal
+(define (chronology-alist->temporal ls chronology . o)
+  (let-optionals o ((strict? #f))
+    (chronology-try-alist->temporal
      ls
      values
      (lambda (res err) (if (and res (not strict?)) res (apply error err)))

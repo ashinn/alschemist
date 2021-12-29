@@ -279,6 +279,3 @@
    instant->julian-date)
   (format
    '(year "-" (fix0 2 month) "-" (fix0 2 day))))
-
-(unless (default-chronology)
-  (default-chronology chronology:gregorian))

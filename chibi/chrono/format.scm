@@ -132,9 +132,8 @@
 ;; references (as procedures), or unparseable applications (whose
 ;; arguments may additionally include numbers and vectors of strings).
 ;; The result can then be compiled either for formatting or parsing.
-(define (temporal-analyze fmt . o)
-  (let-optionals* o ((chrono (default-chronology))
-                     (locale default-locale)
+(define (temporal-analyze fmt chrono . o)
+  (let-optionals* o ((locale default-locale)
                      (lookup (make-locale-lookup temporal-names)))
     (let analyze ((x fmt))
       (cond
@@ -166,7 +165,7 @@
        ((vector? x) x)
        (else (error "unknown locale formatter object" x))))))
 
-(define (temporal-formatter fmt . o)
+(define (chronology-temporal-formatter fmt chrono . o)
   (define (format-to-string f)
     (lambda (t)
       (let ((out (open-output-string)))
@@ -187,8 +186,7 @@
                    (else
                     a)))
                 args)))
-  (let-optionals* o ((chrono (default-chronology))
-                     (locale default-locale)
+  (let-optionals* o ((locale default-locale)
                      (lookup (make-locale-lookup temporal-names)))
     (let compile ((x (temporal-analyze fmt chrono locale lookup))
                   (return format-to-string))
@@ -217,7 +215,7 @@
   (let ((chronology (temporal-chronology t)))
     (let-optionals o ((fmt (chronology-format chronology))
                       (locale default-locale))
-      ((temporal-formatter fmt chronology locale)
+      ((chronology-temporal-formatter fmt chronology locale)
        t))))
 
 (define (parse-integer str sc fixed-len pass fail)
@@ -399,9 +397,8 @@
                            temporal-unfix-max-length))
      )))
 
-(define (temporal-parser fmt . o)
-  (let-optionals* o ((chrono (default-chronology))
-                     (locale default-locale)
+(define (chronology-temporal-parser fmt chrono . o)
+  (let-optionals* o ((locale default-locale)
                      (strict? #f)
                      (lookup (make-locale-lookup temporal-names)))
     ;; A compiled parser is a CPS-style procedure of the form:
@@ -430,7 +427,7 @@
                             (lambda (msg str)
                               (error "couldn't parse temporal" msg str))))
                        (lambda (str)
-                         (try-alist->temporal
+                         (chronology-try-alist->temporal
                           (f '() str (string-cursor-start str) pass fail)
                           values
                           (lambda (res err)
@@ -509,5 +506,5 @@
        (else
         (error "unknown locale parser object" locale x))))))
 
-(define (string->temporal str fmt . o)
-  ((apply temporal-parser fmt o) str))
+(define (chronology-string->temporal str fmt chrono . o)
+  ((apply chronology-temporal-parser fmt chrono o) str))

@@ -10,11 +10,11 @@
    temporal? temporal-ref temporal-update temporal-adjust
    temporal=? temporal<? temporal<=? temporal>? temporal>=?
    temporal-chronology temporal-in-chronology temporal-fields
-   temporal->instant instant->temporal
-   temporal->list list->temporal
-   temporal->alist alist->temporal try-alist->temporal
+   temporal->instant chronology-instant->temporal
+   temporal->list chronology-list->temporal
+   temporal->alist chronology-alist->temporal chronology-try-alist->temporal
    ;; defining new chronologies
-   define-chronology default-chronology
+   define-chronology
    ;; chronology internals
    make-chronology chronology?
    chronology-name chronology-fields chronology-virtual

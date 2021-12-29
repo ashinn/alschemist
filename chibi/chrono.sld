@@ -2,10 +2,12 @@
 ;;> Library grouping the four most common chrono libraries.
 
 (define-library (chibi chrono)
-  (import (chibi chrono base)
+  (import (scheme base)
+          (chibi chrono base)
           (chibi chrono common)
           (chibi chrono format)
-          (chibi chrono time-zone))
+          (chibi chrono time-zone)
+          (chibi optional))
   (export
    ;; base
    ;; instants
@@ -18,7 +20,7 @@
    temporal->list list->temporal
    temporal->alist alist->temporal try-alist->temporal
    ;; defining new chronologies
-   define-chronology default-chronology
+   define-chronology
    ;; chronology internals
    make-chronology chronology?
    chronology-name chronology-fields chronology-virtual
@@ -63,4 +65,30 @@
    temporal-macro? make-temporal-macro
    unparseable? make-unparseable
    unparseable-parse unparseable-unparse
-   unparseable-min-length unparseable-max-length))
+   unparseable-min-length unparseable-max-length)
+  (begin
+    ;; Wrappers providing a default chronology.
+    (define (instant->temporal instant . o)
+      (let-optionals o ((chronology chronology:gregorian))
+        (chronology-instant->temporal instant chronology)))
+    (define (list->temporal ls . o)
+      (let-optionals o ((chronology chronology:gregorian))
+        (chronology-list->temporal ls chronology)))
+    (define (try-alist->temporal ls . o)
+      (let-optionals o ((chronology chronology:gregorian)
+                        (strict? #f))
+        (chronology-try-alist->temporal ls chronology strict?)))
+    (define (alist->temporal ls . o)
+      (let-optionals o ((chronology chronology:gregorian)
+                        (strict? #f))
+        (chronology-alist->temporal ls chronology strict?)))
+    (define (string->temporal str . o)
+      (let-optionals o ((chronology chronology:gregorian) . rest)
+        (apply chronology-string->temporal str chronology rest)))
+    (define (temporal-parser fmt . o)
+      (let-optionals o ((chronology chronology:gregorian) . rest)
+        (apply chronology-temporal-parser fmt chronology rest)))
+    (define (temporal-formatter fmt . o)
+      (let-optionals o ((chronology chronology:gregorian) . rest)
+        (apply chronology-temporal-formatter fmt chronology rest)))
+    ))
