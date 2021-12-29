@@ -34,9 +34,10 @@
    temporal-offset temporal-in-utc temporal-in-time-zone
    ;; time-zones
    time-zone? make-time-zone time-zone-name
-   time-zone-offset time-zone-get-additional-offset
+   time-zone-infos time-zone-info time-zone-offset
+   string->time-zone
    ;; common time-zones
-   time-zone:utc time-zone:asia/tokyo time-zone:america/new-york
+   time-zone:utc
    ;; common
    chronology:gregorian chronology:gregorian-date
    chronology:julian-date chronology:time
@@ -46,6 +47,7 @@
    datetime-year datetime-month datetime-day
    datetime-hour datetime-minute datetime-second
    datetime-nanosecond datetime-zone
+   make-time time? time-hour time-minute time-second time-nanosecond
    julian-date-year julian-date-month julian-date-day
    gregorian->instant instant->gregorian
    gregorian-date->instant instant->gregorian-date

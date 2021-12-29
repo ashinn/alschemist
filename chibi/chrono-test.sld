@@ -15,9 +15,11 @@
                 (temporal->instant dt))
             (test `(,time-zone:utc 2021 9 8 13 16 58 0 0)
                 (temporal->list dt))
-            (test `(,time-zone:asia/tokyo 2021 9 8 22 16 58 0 0)
+            (test `(,time-zone:utc 2021 3 1 0 30 0 0 0)
                 (temporal->list
-                 (instant->gregorian instant time-zone:asia/tokyo)))
+                 (temporal-adjust
+                  (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
+                  'hour 1)))
             (test `(2021 9 8)
                 (temporal->list
                  (instant->temporal instant chronology:gregorian-date)))
@@ -69,6 +71,9 @@
             (test `((year . 2022) (month . 1) (day . 1))
                 (temporal->alist
                  (temporal-adjust (make-date 2021 12 31) 'day 1)))
+            (test `((hour . 18) (minute . 30) (second . 0) (nanosecond . 0))
+                (temporal->alist
+                 (temporal-adjust (make-time 23 30 0 0) 'minute -300)))
             (test '((year . 2021) (month . 9) (day . 8))
                 (temporal->alist
                  (alist->temporal
@@ -80,11 +85,87 @@
               chronology:gregorian-date
               #t)))
           (test-group "time-zones"
-            (test `(,time-zone:utc 2021 3 1 0 30 0 0 0)
-                (temporal->list
-                 (temporal-adjust
-                  (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
-                  'hour 1))))
+            (let ((time-zone:america/new-york
+                   (string->time-zone "America/New_York"))
+                  (time-zone:asia/tokyo
+                   (string->time-zone "Asia/Tokyo")))
+              (test-assert (time-zone? time-zone:america/new-york))
+              (test `(2021 9 8 22 16 58 0 0)
+                  (cdr
+                   (temporal->list
+                    (instant->gregorian instant time-zone:asia/tokyo))))
+              (test `(2021 3 1 8 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
+                     time-zone:asia/tokyo))))
+              (test `(2021 2 28 23 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-utc
+                     (list->temporal
+                      `(,time-zone:america/new-york 2021 2 28 18 30 0 0 0))))))
+              ;; EST -5 hours
+              (test `(2021 2 28 18 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
+                     time-zone:america/new-york))))
+              (test `(2021 2 28 18 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
+                     time-zone:america/new-york))))
+              ;; EDT -4 hours
+              (test `(2021 5 28 19 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 5 28 23 30 0 0 0))
+                     time-zone:america/new-york))))
+              ;; spring forward
+              (test `(2021 3 13 02 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 3 13 07 30 0 0 0))
+                     time-zone:america/new-york))))
+              (test `(2021 3 14 03 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 3 14 07 30 0 0 0))
+                     time-zone:america/new-york))))
+              ;; fall back - the fold happens from 6-7am UTC, where we
+              ;; repeat 1-2am ET for the second time
+              (test `(2021 11 7 01 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 11 7 05 30 0 0 0))
+                     time-zone:america/new-york))))
+              (test `(2021 11 7 01 30 0 0 1)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 11 7 06 30 0 0 0))
+                     time-zone:america/new-york))))
+              (test `(2021 11 7 02 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 11 7 07 30 0 0 0))
+                     time-zone:america/new-york))))
+              (test `(2021 11 8 01 30 0 0 0)
+                  (cdr
+                   (temporal->list
+                    (temporal-in-time-zone
+                     (list->temporal `(,time-zone:utc 2021 11 8 06 30 0 0 0))
+                     time-zone:america/new-york))))
+              ))
           (test-group "formatting"
             (test "2021/9/8"
                 (temporal->string dt '(year "/" month "/" day)))
@@ -98,6 +179,10 @@
             (test "8th of September, 2021"
                 (temporal->string dt
                                   '(day (nth day) " of " month-name ", " year)))
+            (test "8ème septembre, 2021"
+                (temporal->string dt
+                                  '(day (nth day) " " month-name ", " year)
+                                  locale:french))
             (test "Wednesday the 8th of September, 2021"
                 (temporal->string
                  dt
@@ -183,16 +268,18 @@
                                          chronology:gregorian-date)
                  '(year "/" month "/" day))))
           (test-group "japanese"
-            (test "55/11/20"
-                (temporal->string
-                 (temporal-in-chronology
-                  (make-datetime time-zone:asia/tokyo 1980 11 20 0 0 0 0 0)
-                  chronology:japan)
-                 '(year "/" month "/" day)))
-            (test "1980/11/20"
-                (temporal->string
-                 (temporal-in-chronology
-                  (make-japanese-time 248 55 11 20)
-                  chronology:gregorian-date)
-                 '(year "/" month "/" day))))
+            (let ((time-zone:asia/tokyo
+                   (string->time-zone "Asia/Tokyo")))
+              (test "55/11/20"
+                  (temporal->string
+                   (temporal-in-chronology
+                    (make-datetime time-zone:asia/tokyo 1980 11 20 0 0 0 0 0)
+                    chronology:japan)
+                   '(year "/" month "/" day)))
+             (test "1980/11/20"
+                 (temporal->string
+                  (temporal-in-chronology
+                   (make-japanese-time 248 55 11 20)
+                   chronology:gregorian-date)
+                  '(year "/" month "/" day)))))
           )))))

@@ -270,19 +270,23 @@
         (ub (chrono-field-upper-bound field prev-values)))
     (cond
      ((< value lb)  ; borrow
-      (let* ((prev-values
-              (carry-adjust (cdr prev-fields) (cdr prev-values)
-                            (car prev-fields) (- (car prev-values) 1)))
-             (ub (chrono-field-upper-bound field prev-values)))
-        (carry-adjust prev-fields prev-values field (- ub value -1))))
+      (if (null? prev-fields)
+          (error "can't borrow for largest field" field value)
+          (let* ((prev-values
+                  (carry-adjust (cdr prev-fields) (cdr prev-values)
+                                (car prev-fields) (- (car prev-values) 1)))
+                 (ub (chrono-field-upper-bound field prev-values)))
+            (carry-adjust prev-fields prev-values field (+ ub value 1)))))
      ((> value ub) ; carry
-      (let* ((prev-values
-              (carry-adjust (cdr prev-fields) (cdr prev-values)
-                            (car prev-fields) (+ (car prev-values) 1)))
-             (new-ub (chrono-field-upper-bound field prev-values))
-             (new-lb (chrono-field-lower-bound field prev-values))
-             (new-value (- value (- ub lb -1))))
-        (carry-adjust prev-fields prev-values field new-value)))
+      (if (null? prev-fields)
+          (error "can't carry for largest field" field value)
+          (let* ((prev-values
+                  (carry-adjust (cdr prev-fields) (cdr prev-values)
+                                (car prev-fields) (+ (car prev-values) 1)))
+                 (new-ub (chrono-field-upper-bound field prev-values))
+                 (new-lb (chrono-field-lower-bound field prev-values))
+                 (new-value (- value (- ub lb -1))))
+            (carry-adjust prev-fields prev-values field new-value))))
      (else
       (cons value prev-values)))))
 
