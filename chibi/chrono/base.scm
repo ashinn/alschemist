@@ -178,8 +178,8 @@
      (define-chrono name r c p f v to fi fmt msg rest))
     ((define-chrono name r c p f v to from fmt msg ((format fo) . rest))
      (define-chrono name r c p f v to from fo msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((messages . ls) . rest))
-     (define-chrono name r c p f v to from fmt `ls rest))
+    ((define-chrono name r c p f v to from fmt msg ((messages m) . rest))
+     (define-chrono name r c p f v to from fmt m rest))
     ))
 
 (define-syntax define-chronology

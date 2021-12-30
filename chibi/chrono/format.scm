@@ -112,21 +112,24 @@
 
 (define default-locale (make-locale 'en))
 
-(define (make-locale-lookup names)
+(define (make-locale-lookup chrono names)
   (lambda (locale name)
-    (let lookup ((ls names) (fallback '()))
-      (cond
-       ((null? ls)
-        (any (lambda (x) (cond ((assq name (cdr x)) => cdr) (else #f)))
-             (list-sort (lambda (a b) (locale-includes? b a)) fallback)))
-       ((locale-includes? (caar ls) locale)
-        ;; fast path: try an exact match right away
-        (if (locale= (caar ls) locale)
-            (cond ((assq name (cdar ls)) => cdr)
-                  (else (lookup (cdr ls) fallback)))
-            (lookup (cdr ls) (cons (car ls) fallback))))
-       (else
-        (lookup (cdr ls) fallback))))))
+    (let lp ((messages (list (chronology-messages chrono) names)))
+      (and (pair? messages)
+           (let lookup ((ls (car messages)) (fallback '()))
+             (cond
+              ((null? ls)
+               (or (any (lambda (x) (cond ((assq name (cdr x)) => cdr) (else #f)))
+                        (list-sort (lambda (a b) (locale-includes? b a)) fallback))
+                   (lp (cdr messages))))
+              ((locale-includes? (caar ls) locale)
+               ;; fast path: try an exact match right away
+               (if (locale= (caar ls) locale)
+                   (cond ((assq name (cdar ls)) => cdr)
+                         (else (lookup (cdr ls) fallback)))
+                   (lookup (cdr ls) (cons (car ls) fallback))))
+              (else
+               (lookup (cdr ls) fallback))))))))
 
 ;; Analyze, resolving to literal strings, field references, virtual
 ;; references (as procedures), or unparseable applications (whose
@@ -134,7 +137,7 @@
 ;; The result can then be compiled either for formatting or parsing.
 (define (temporal-analyze fmt chrono . o)
   (let-optionals* o ((locale default-locale)
-                     (lookup (make-locale-lookup temporal-names)))
+                     (lookup (make-locale-lookup chrono temporal-names)))
     (let analyze ((x fmt))
       (cond
        ((and (symbol? x) (lookup locale x))
@@ -187,7 +190,7 @@
                     a)))
                 args)))
   (let-optionals* o ((locale default-locale)
-                     (lookup (make-locale-lookup temporal-names)))
+                     (lookup (make-locale-lookup chrono temporal-names)))
     (let compile ((x (temporal-analyze fmt chrono locale lookup))
                   (return format-to-string))
       (cond
@@ -400,7 +403,7 @@
 (define (chronology-temporal-parser fmt chrono . o)
   (let-optionals* o ((locale default-locale)
                      (strict? #f)
-                     (lookup (make-locale-lookup temporal-names)))
+                     (lookup (make-locale-lookup chrono temporal-names)))
     ;; A compiled parser is a CPS-style procedure of the form:
     ;;   (parse ls str sc pass fail)
     ;; where ls is the accumulated alist of temporal key/values,

@@ -276,10 +276,17 @@
                     (make-datetime time-zone:asia/tokyo 1980 11 20 0 0 0 0 0)
                     chronology:japan)
                    '(year "/" month "/" day)))
-             (test "1980/11/20"
-                 (temporal->string
-                  (temporal-in-chronology
-                   (make-japanese-time 248 55 11 20)
-                   chronology:gregorian-date)
-                  '(year "/" month "/" day)))))
+              (test "昭和55年11月20日"
+                  (temporal->string
+                   (temporal-in-chronology
+                    (make-datetime time-zone:asia/tokyo 1980 11 20 0 0 0 0 0)
+                    chronology:japan)
+                   '(era-name year "年" month "月" day "日")
+                   locale:japanese))
+              (test "1980/11/20"
+                  (temporal->string
+                   (temporal-in-chronology
+                    (make-japanese-time 248 55 11 20)
+                    chronology:gregorian-date)
+                   '(year "/" month "/" day)))))
           )))))

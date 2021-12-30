@@ -386,4 +386,9 @@
    instant->japanese-time)
   (format
    '(year "-" month "-" day))
+  (messages
+   `((,locale:japanese
+      (era-names . ,(vector-map nengo-name japanese-nengo)))
+     (,locale:root
+      (era-name (ref era-names era)))))
   )
