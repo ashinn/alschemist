@@ -237,7 +237,9 @@
           ;; TODO: determine when we can disable backtracking
           (if (and (positive? i) (not fixed-len))
               (lambda (msg str2)
-                (pass res str sc fail))
+                ;; use the earliest failure message when backtracking
+                (let ((fail2 (lambda (msg2 str3) (fail msg str2))))
+                  (pass res str sc fail2)))
               fail)))
      ((or (zero? i) fixed-len)
       (fail (string-append "insufficient digits at: "
@@ -283,9 +285,9 @@
 (define (chrono-field-parser field)
   (let ((name (chrono-field-name field)))
     ;; TODO: parse non-integer fields
-    (if (or (chrono-field-lb field) (chrono-field-ub field))
-        (let ((lb (chrono-field-lb field))
-              (ub  (chrono-field-ub field)))
+    (let ((lb (and (not (chrono-field-get-lb field)) (chrono-field-lb field)))
+          (ub (and (not (chrono-field-get-ub field)) (chrono-field-ub field))))
+      (if (or lb ub)
           (lambda (ls str sc pass fail)
             (parse-integer
              str sc #f
@@ -296,13 +298,13 @@
                    (fail (string-append "out of bounds for " (->string name)
                                         ": " (number->string i))
                          str)))
-             fail)))
-        (lambda (ls str sc pass fail)
-          (parse-integer
-           str sc #f
-           (lambda (i str sc fail)
-             (pass (cons (cons name i) ls) str sc fail))
-           fail)))))
+             fail))
+          (lambda (ls str sc pass fail)
+            (parse-integer
+             str sc #f
+             (lambda (i str sc fail)
+               (pass (cons (cons name i) ls) str sc fail))
+             fail))))))
 
 (define (virtual-field-parser virtual-field)
   (let ((name (virtual-field-name virtual-field)))
