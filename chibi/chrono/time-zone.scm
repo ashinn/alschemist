@@ -272,27 +272,136 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; API
 
+(define (offset->time-zone hours . o)
+  (let* ((minutes (if (pair? o) (car o) 0))
+         (name (string-append (number->string hours) ":"
+                              (number->string minutes))))
+    (make-time-zone name (vector (make-tz-info (list hours minutes) name)))))
+
+;; x is a string or list of integers
+(define (abbrev->time-zone name x)
+  (if (string? x)
+      (string->time-zone x)
+      (make-time-zone name
+                      (vector
+                       (make-tz-info (if (number? x) (list x) x) name)))))
+
 ;;> Returns the time-zone with the given name, or \scheme{#f} if not a
 ;;> known name.  Tries to load from the tzdb data in /usr/share/zoneinfo.
-(define (string->time-zone name)
-  (unless tzdb
-    (guard (exn (else
-                 (write-string ";; ERROR: couldn't load tzdb\n"
-                               (current-error-port))
-                 (set! tzdb `(("Etc/UTC" . ,time-zone:utc)))))
-      ;; TODO: binary tzfile support
-      (set! tzdb
-            (tzdb-compile (tzdb-parse-file "/usr/share/zoneinfo/tzdata.zi")))))
-  (let get ((x name) (seen '()))
-    (cond
-     ((assoc x tzdb)
-      => (lambda (cell)
-           (if (string? (cdr cell))
-               (if (member (cdr cell) seen)
-                   (error "cycle in time-zone aliases" cell seen)
-                   (get (cdr cell) (cons x seen)))
-               (cdr cell))))
-     (else #f))))
+;;> Accepts tzdb names as well as common abbreviations and +/-hh:mm format.
+(define (string->time-zone name . o)
+  (let ((locale (if (pair? o) (car o) locale:root)))
+    (unless tzdb
+      (guard (exn (else
+                   (write-string ";; ERROR: couldn't load tzdb\n"
+                                 (current-error-port))
+                   (set! tzdb `(("Etc/UTC" . ,time-zone:utc)))))
+        ;; TODO: binary tzfile support
+        (set! tzdb
+              (tzdb-compile
+               (tzdb-parse-file "/usr/share/zoneinfo/tzdata.zi")))))
+   (let get ((x name) (seen '()))
+     (cond
+      ((assoc x tzdb)
+       => (lambda (cell)
+            (if (string? (cdr cell))
+                (if (member (cdr cell) seen)
+                    (error "cycle in time-zone aliases" cell seen)
+                    (get (cdr cell) (cons x seen)))
+                (cdr cell))))
+      ((equal? "" x)
+       #f)
+      ((and (= 1 (string-length x))
+            (char-alphabetic? (string-ref x 0))
+            (char-upper-case? (string-ref x 0)))
+       (let* ((hours (+ 1 (- (char->integer (string-ref x 0))
+                             (char->integer #\A))))
+              (hours (if (> hours 9) (- hours 1) hours))  ;; no J
+              (hours (if (> hours 12) (- 12 hours) hours))
+              (hours (if (< hours -12) 0 hours)))
+         (offset->time-zone hours)))
+      ((memv (string-ref x 0) '(#\+ #\-))
+       (case (string-length x)
+         ((3) (cond ((string->number x) => offset->time-zone)))
+         ((6)
+          (and (char=? #\: (string-ref x 3))
+               (let ((hours (string->number (substring x 0 3)))
+                     (minutes (string->number (substring x 4))))
+                 (and hours minutes (offset->time-zone hours minutes)))))
+         (else #f)))
+      (else
+       (abbrev->time-zone
+        x
+        (case (string->symbol x)
+          ((BIT IDLW) -12)
+          ((NUT) -11)
+          ((CKT HST SDT TAHT) -10)
+          ((MART MIT) '(-09 30))
+          ((AKST GAMT GIT HDT) -09)
+          ((AKDT CIST PST) -08)
+          ((PDT) -07)
+          ((CT) "America/Chicago")
+          ((MDT EAST GALT) -06)
+          ((COT EASST EST PET) -05)
+          ((ET) "America/New_York")
+          ((AST BOT CLT COST EDT FKT GYT PYT VET) -04)
+          ((NST NT) '(-03 30))
+          ((ADT AMST ART BRT CLST FKST GFT PMST PYST ROTT SRT UYT WGT) -03)
+          ((NDT) '(-02 30))
+          ((BRST FNT PMDT UYST WGST) -02)
+          ((AZOT CVT EGT) -01)
+          ((AZOST EGST GMT UTC WET) 0)
+          ((CET DFT MET WAT WEST) +01)
+          ((CAT CEST EET HAEC KALT MEST SAST WAST) +02)
+          ((EAT EEST FET IDT IOT MSK SYOT TRT) +03)
+          ((IRST) '(+03 30))
+          ((AZT GET MUT RET SAMT SCT VOLT) +04)
+          ((AFT) '(+04 30))
+          ((IRDT) '(+04 30))
+          ((AQTT HMT MAWT MVT ORAT PKT TFT TJT TMT UZT YEKT) +05)
+          ((SLST) '(+05 30))
+          ((NPT) '(+05 45))
+          ((ALMT BIOT BTT KGT OMST VOST) +06)
+          ((CCT MMT) '(+06 30))
+          ((CXT DAVT HOVT ICT KRAT NOVT THA WIB) +07)
+          ((AWST BNT CHOT HKT HOVST IRKT PHST PHT SGT ULAT WITA WST) +08)
+          ((ACWST CWST) '(+08 45))
+          ((CHOST JST KST MYT PWT ULAST WIT TLT YAKT) +09)
+          ((ACST) '(+09 30))
+          ((AEST AET CHST CHUT DDUT PGT VLAT) +10)
+          ((ACDT LHST) '(+10 30))
+          ((AEDT KOST MIST NCT NFT PONT SAKT SBT SRET VUT) +11)
+          ((ANAT FJT GILT MAGT MHT NZST PETT TVT WAKT) +12)
+          ((CHAST) '(+12 45))
+          ((NZDT PHOT TKT TOT) +13)
+          ((CHADT) '(+13 45))
+          ((LINT) +14)
+          ((ACT) (if (or (eq? 'BR (locale-region locale))
+                         (eq? 'pt (locale-language locale)))
+                     -05
+                     +08))
+          ((AMT) (if (or (eq? 'AM (locale-region locale))
+                         (memq (locale-language locale) '(hy hye arm)))
+                     '(+04)
+                     '(-04)))
+          ((AST) (if (or (eq? 'ar (locale-language locale))
+                         (memq (locale-region locale) '(BH IQ KW QA SA YE)))
+                     '(+03)
+                     '(-04))
+           +03)
+          ((BST) (cond ((eq? 'PG (locale-region locale)) +11)
+                       ((eq? 'BD (locale-region locale)) +06)
+                       (else +01)))
+          ((CDT) (if (eq? 'CU (locale-region locale)) -04 -05))
+          ((CST) (case (locale-region locale) ((ZH) +08) ((CU) -05) (else -06)))
+          ((ECT) (if (eq? 'EC (locale-region locale)) -05 -04))
+          ((GST) (if (eq? 'GS (locale-region locale)) -02 +04))
+          ((IST) (cond ((eq? 'IL (locale-region locale)) +02)
+                       ((eq? 'IN (locale-region locale)) '(+05 30))
+                       (else +01)))
+          ((MST) (if (eq? 'MY (locale-region locale)) +08 -07))
+          ((SST) (if (eq? 'WS (locale-region locale)) -11 +08))
+          (else #f))))))))
 
 ;;> Returns the offset from UTC at the given time.
 (define (temporal-offset t)
