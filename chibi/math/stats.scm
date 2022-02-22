@@ -327,7 +327,10 @@
 ;;> the number of successes out of the total number of trials.
 (define (bernoulli-trials successes trials)
   (assert (<= successes trials))
-  (summary-distribution 'mean: (/ successes trials) 'size: trials))
+  (let ((mean (/ successes trials)))
+    (summary-distribution 'mean: mean
+                          'variance: (* mean (- 1 mean))
+                          'size: trials)))
 
 ;;> A utility for a summary distribution where we only know the mean.
 (define (mean-distribution mean)
@@ -1231,8 +1234,13 @@
 (define (z-statistic sample dist)
   (if (not (eq? 'normal (distribution-name dist)))
       (error "z-statistic expected a normal distribution" dist))
-  (* (sqrt (size sample))
-     (standard-score (mean sample) (mean dist) (variance dist))))
+  (let ((sigma (sqrt (+ (/ (or (variance sample) (variance dist))
+                           (size sample))
+                        (/ (variance dist)
+                           (if (infinite? (size dist))
+                               (size sample)
+                               (size dist)))))))
+    (standard-score (mean sample) (mean dist) sigma)))
 
 ;;> AKA the Student's t-test, after the pen name "Student" used by
 ;;> William Sealy Gosset.  Returns the probability that the two

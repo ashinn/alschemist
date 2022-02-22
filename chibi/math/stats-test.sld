@@ -71,9 +71,9 @@
           (test 4. (variance sample))))
       (let ((sample (summary-distribution 'mean: 96 'size: 55))
             (dist (normal-distribution 100 12)))
-        (test -2.47206616 (z-statistic sample dist))
-        (test 0.0067167 (z-test sample dist))
-        (test 0.0134334 (z-test sample dist 2))
+        (test -6.055300708 (z-statistic sample dist))
+        (test 0.0 (z-test sample dist))
+        (test 0.0 (z-test sample dist 2))
         (test-assert 0.0067167 (z-test? sample dist)))
       (test 9107.30
           (covariance '#(1692 1978 1884 2151 2519) '#(68 102 110 112 154)))
