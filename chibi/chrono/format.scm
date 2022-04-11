@@ -1,4 +1,37 @@
 
+(define-record-type Temporal-Macro
+  (make-temporal-macro proc)
+  temporal-macro?
+  (proc temporal-macro-proc))
+
+(define-record-type Virtual-Field
+  (make-virtual-field name proc)
+  virtual-field?
+  (name virtual-field-name)
+  (proc virtual-field-proc))
+
+(define-record-type Unparseable
+  (%make-unparseable unparse parse min-length max-length kons)
+  unparseable?
+  (unparse unparseable-unparse)
+  (parse unparseable-parse)
+  (min-length unparseable-min-length)
+  (max-length unparseable-max-length)
+  (kons unparseable-kons))
+
+(define (make-unparseable unparse . o)
+  (let-optionals o ((parse #f)
+                    (min-length (lambda (ls) 0))
+                    (max-length (lambda (ls) +inf.0))
+                    (kons #f))
+    (%make-unparseable unparse parse min-length max-length kons)))
+
+(define (unparseable-fixed-length? p args)
+  (and (unparseable-min-length p)
+       (unparseable-max-length p)
+       (= (apply (unparseable-min-length p) args)
+          (apply (unparseable-max-length p) args))))
+
 ;; string/number: itself
 ;; symbol:
 ;;   field-name: numeric field value
@@ -9,10 +42,18 @@
 ;; (pad-right n x [ch]): right pad format x to n chars
 ;; (pad0 n x): short for (pad n x #\0)
 ;; (pad0-right n x [ch]): short for (pad-right n x #\0)
-;; (fix[0][-right] n x [ch]): pads or truncates as needed
+;; (fit[0][-right] n x [ch]): pads or truncates as needed
 ;; (ordinal x): locale-specific ordinal enum (en = st: 0, nd: 1, rd: 2, th: 3)
 ;; (ref #("st" "nd" "rd" "th") (ordinal x))
 ;; (nth x): short for (ref nth-names (ordinal x))
+;; am/pm: (ref am/pm-names (modulo hour 12))
+;; time-zone: tzdb name, e.g. America/New_York
+;; time-zone-offset: +hhmm offset
+;; time-zone-abbrev: ambiguous abbrev like EST, CDT, etc.
+;; time-zone-military: single letter military offset
+;;
+;; for x in date, date-time and time:
+;;   x/long, x, x/short
 
 (define (chronology-get-field chrono field)
   (let lp ((ls (chronology-fields chrono)))
@@ -52,21 +93,48 @@
   (let ((len (string-length str)))
     (if (> len n) (substring str 0 n) str)))
 
-(define (temporal-fix n x . o)
+(define (temporal-fit n x . o)
   (string-truncate n (apply temporal-pad n x o)))
 
-(define (temporal-fix-right n x . o)
+(define (temporal-fit-right n x . o)
   (string-truncate-right n (apply temporal-pad-right n x o)))
 
 (define (temporal-unpad n x . o)
-  (lambda (str sc pass fail)
-    (let ((sc2 (string-cursor-forward str sc n)))
-      (if (and (string-cursor<? sc sc2)
-               (string-cursor<=? sc2 (string-cursor-end str)))
-          (pass (substring/cursors str sc sc2) sc2 fail)
-          (fail "no input to unpad" str)))))
+  (let ((ch (if (pair? o) (car o) #\space)))
+    (lambda (str sc kons pass fail)
+      (let ((sc2 (string-cursor-forward str sc n)))
+        (if (and (string-cursor<? sc sc2)
+                 (string-cursor<=? sc2 (string-cursor-end str)))
+            (let* ((substr (substring/cursors str sc sc2))
+                   (end (string-cursor-end substr))
+                   (end-1 (string-cursor-prev substr end)))
+              ;; strip off all but the last char matching the pad
+              (let lp ((sc3 (string-cursor-start substr )))
+                (if (and (string-cursor<? sc3 end-1)
+                         (eqv? ch (string-ref/cursor substr sc3)))
+                    (lp (string-cursor-next substr sc3))
+                    (let ((res (substring/cursors substr sc3 end)))
+                      (pass res sc2 fail)))))
+            (fail "insufficient input to unpad" str))))))
 
-(define temporal-unfix temporal-unpad)
+(define (temporal-unpad-right n x . o)
+  (let ((ch (if (pair? o) (car o) #\space)))
+    (lambda (str sc kons pass fail)
+      (let ((sc2 (string-cursor-forward str sc n)))
+        (if (and (string-cursor<? sc sc2)
+                 (string-cursor<=? sc2 (string-cursor-end str)))
+            (let* ((substr (substring/cursors str sc sc2))
+                   (start (string-cursor-start substr))
+                   (start+1 (string-cursor-next substr start)))
+              ;; strip off all but the first char matching the pad
+              (let lp ((sc3 (string-cursor-end substr)))
+                (let ((sc4 (and (string-cursor>? sc3 start+1)
+                                (string-cursor-prev substr sc3))))
+                  (if (and sc4 (eqv? ch (string-ref/cursor substr sc4)))
+                      (lp sc4)
+                      (let ((res (substring/cursors substr start sc3)))
+                        (pass res sc2 fail))))))
+            (fail "insufficient input to unpad" str))))))
 
 (define (temporal-unpad-min-length n x . o)
   n)
@@ -74,41 +142,109 @@
 (define (temporal-unpad-max-length n x . o)
   +inf.0)
 
-(define (temporal-unfix-min-length n x . o)
+(define (temporal-unfit n x . o)
+  (let ((unpad (apply temporal-unpad n x o)))
+    (if (and (pair? x) (eq? temporal-unparseable:ref (car x)))
+        (let ((parse-ref (alternate-parser
+                          (vector-map (lambda (s) (string-take-right s n))
+                                      (cadr x)))))
+          (lambda (str sc kons pass fail)
+            (unpad str
+                   sc
+                   kons
+                   (lambda (str sc fail2)
+                     (parse-ref str sc kons pass fail2))
+                   fail)))
+        unpad)))
+
+(define (temporal-unfit-right n x . o)
+  (apply temporal-unpad-right n x o))
+
+(define (temporal-unfit-min-length n x . o)
   n)
 
-(define (temporal-unfix-max-length n x . o)
+(define (temporal-unfit-max-length n x . o)
   n)
 
-(define-record-type Temporal-Macro
-  (make-temporal-macro proc)
-  temporal-macro?
-  (proc temporal-macro-proc))
+(define temporal-unparseable:ref
+  (make-unparseable
+   (lambda (seq n)
+     ((if (vector? seq) vector-ref list-ref) seq n))
+   (lambda (seq n)
+     (let ((parse (alternate-parser seq)))
+       (lambda (str sc kons pass fail)
+         (parse str sc
+                kons
+                (lambda (i str sc fail)
+                  ;; convert back to a string to reparse
+                  (pass (number->string i) sc fail))
+                fail))))))
 
-(define-record-type Virtual-Field
-  (make-virtual-field name proc)
-  virtual-field?
-  (name virtual-field-name)
-  (proc virtual-field-proc))
+(define temporal-unparseable:pad
+  (make-unparseable temporal-pad
+                    temporal-unpad
+                    temporal-unpad-min-length
+                    temporal-unpad-max-length))
 
-(define-record-type Unparseable
-  (%make-unparseable unparse parse min-length max-length)
-  unparseable?
-  (unparse unparseable-unparse)
-  (parse unparseable-parse)
-  (min-length unparseable-min-length)
-  (max-length unparseable-max-length))
+(define temporal-unparseable:pad0
+  (make-unparseable (lambda (n x) (temporal-pad n x #\0))
+                    temporal-unpad
+                    temporal-unpad-min-length
+                    temporal-unpad-max-length))
 
-(define (make-unparseable unparse parse . o)
-  (let-optionals o ((min-length (lambda (ls) 0))
-                    (max-length (lambda (ls) +inf.0)))
-    (%make-unparseable unparse parse min-length max-length)))
+(define temporal-unparseable:pad-right
+  (make-unparseable temporal-pad-right
+                    temporal-unpad-right
+                    temporal-unpad-min-length
+                    temporal-unpad-max-length))
 
-(define (unparseable-fixed-length? p args)
-  (and (unparseable-min-length p)
-       (unparseable-max-length p)
-       (= (apply (unparseable-min-length p) args)
-          (apply (unparseable-max-length p) args))))
+(define temporal-unparseable:pad0-right
+  (make-unparseable (lambda (n x) (temporal-pad-right n x #\0))
+                    temporal-unpad-right
+                    temporal-unpad-min-length
+                    temporal-unpad-max-length))
+
+(define temporal-unparseable:fit
+  (make-unparseable temporal-fit
+                    temporal-unfit
+                    temporal-unfit-min-length
+                    temporal-unfit-max-length))
+
+(define temporal-unparseable:fit0
+  (make-unparseable (lambda (n x) (temporal-fit n x #\0))
+                    temporal-unfit
+                    temporal-unfit-min-length
+                    temporal-unfit-max-length))
+
+(define temporal-unparseable:fit-right
+  (make-unparseable temporal-fit-right
+                    temporal-unfit-right
+                    temporal-unfit-min-length
+                    temporal-unfit-max-length))
+
+(define temporal-unparseable:fit0-right
+  (make-unparseable (lambda (n x) (temporal-fit-right n x #\0))
+                    temporal-unfit-right
+                    temporal-unfit-min-length
+                    temporal-unfit-max-length))
+
+(define simple-trasform-unparseables
+  `((,temporal-unparseable:pad
+     . ,string-pad)
+    (,temporal-unparseable:pad0
+     . ,(lambda (s n) (string-pad s n #\0)))
+    (,temporal-unparseable:pad-right
+     . ,string-pad-right)
+    (,temporal-unparseable:pad0-right
+     . ,(lambda (s n) (string-pad-right s n #\0)))
+    (,temporal-unparseable:fit
+     . ,(lambda (s n) (string-pad (string-take s n) n)))
+    (,temporal-unparseable:fit0
+     . ,(lambda (s n) (string-pad (string-take s n) n #\0)))
+    (,temporal-unparseable:fit-right
+     . ,(lambda (s n) (string-pad-right (string-take s n) n)))
+    (,temporal-unparseable:fit0-right
+     . ,(lambda (s n) (string-pad-right (string-take s n) n #\0)))))
 
 (define default-locale (make-locale 'en))
 
@@ -149,6 +285,7 @@
        ((and (symbol? x) (assq x (chronology-virtual chrono)))
         => (lambda (cell) (make-virtual-field x (cdr cell))))
        ((chrono-field? x) x)
+       ((virtual-field? x) x)
        ((unparseable? x) x)
        ((temporal-macro? x) x)
        ((symbol? x)
@@ -158,10 +295,23 @@
                x))
        ((pair? x)
         (let ((op (analyze (car x)))
-              (args (analyze (cdr x))))
-          (if (temporal-macro? op)
-              (analyze (apply (temporal-macro-proc op) args))
-              (cons op args))))
+              (args (map analyze (cdr x))))
+          (cond
+           ((temporal-macro? op)
+            (analyze (apply (temporal-macro-proc op) args)))
+           ((and (pair? args) (pair? (cdr args))
+                 (pair? (cadr args))
+                 (eq? temporal-unparseable:ref (car (cadr args)))
+                 (assq op simple-trasform-unparseables))
+            ;; special case, precompute simple transforms of ref
+            => (lambda (cell)
+                 (let ((y `(,temporal-unparseable:ref
+                            ,(vector-map (lambda (s) ((cdr cell) s (car args)))
+                                          (cadr (cadr args)))
+                            ,@(cddr (cadr args)))))
+                   (analyze y))))
+           (else
+            (cons op args)))))
        ((null? x) '())
        ((string? x) x)
        ((number? x) x)
@@ -268,9 +418,16 @@
    (else
     (fail sc))))
 
+(define (parse-pred str start pred proc)
+  (let lp ((sc start))
+    (if (or (string-cursor>=? sc (string-cursor-end str))
+            (not (pred (string-ref/cursor str sc))))
+        (proc (substring/cursors str start sc) sc)
+        (lp (string-cursor-next str sc)))))
+
 (define (alternate-parser vec)
   ;; TODO: consider precompiling a state machine
-  (lambda (str sc pass fail)
+  (lambda (str sc kons pass fail)
     (let lp ((i 0))
       (cond
        ((>= i (vector-length vec))
@@ -288,32 +445,41 @@
     (let ((lb (and (not (chrono-field-get-lb field)) (chrono-field-lb field)))
           (ub (and (not (chrono-field-get-ub field)) (chrono-field-ub field))))
       (if (or lb ub)
-          (lambda (ls str sc pass fail)
+          (lambda (ls str sc kons pass fail)
             (parse-integer
              str sc #f
              (lambda (i str sc fail)
                ;; TODO: handle dynamic bounds
                (if (and (or (not lb) (<= lb i)) (or (not ub) (<= i ub)))
-                   (pass (cons (cons name i) ls) str sc fail)
+                   (pass (kons name i ls) str sc fail)
                    (fail (string-append "out of bounds for " (->string name)
                                         ": " (number->string i))
                          str)))
              fail))
-          (lambda (ls str sc pass fail)
+          (lambda (ls str sc kons pass fail)
             (parse-integer
              str sc #f
              (lambda (i str sc fail)
-               (pass (cons (cons name i) ls) str sc fail))
+               (pass (kons name i ls) str sc fail))
              fail))))))
 
 (define (virtual-field-parser virtual-field)
   (let ((name (virtual-field-name virtual-field)))
-    (lambda (ls str sc pass fail)
+    (lambda (ls str sc kons pass fail)
       (parse-integer
        str sc #f
        (lambda (i str sc fail)
          (pass (cons (cons name i) ls) str sc fail))
        fail))))
+
+(define (temporal-offset->string t)
+  (string-join (map ->string (temporal-offset t)) ":"))
+
+(define (temporal-time-zone-abbrev t)
+  (let* ((info (time-zone-info (temporal-ref t 'time-zone) t))
+         (format (tz-info-format info)))
+    ;; TODO: DST formatting
+    format))
 
 (define temporal-names
   `((,(make-locale 'en)
@@ -323,7 +489,8 @@
      (month-names
       . #("<invalid>" "January" "February" "March" "April" "May" "June"
           "July" "August" "September" "October" "November" "December"))
-     (nth-names . #("th" "st" "nd" "rd")))
+     (nth-names . #("th" "st" "nd" "rd"))
+     (am/pm-names . #("AM" "PM")))
     (,(make-locale 'fr)
      (day-of-week-names
       . #("dimanche" "lundi" "mardi" "mercredi" "jeudi" "vendredi" "samedi"))
@@ -343,63 +510,83 @@
      (month-name . (ref month-names month))
      (ordinal
       . ,(make-unparseable
-          (lambda (n)
-            (case (modulo n 10) ((1 2 3) n) (else 0)))
-          (lambda (n)
-            (lambda (str sc pass fail)
-              (error "unimplemented")))))
+          (lambda (n) (case (modulo n 10) ((1 2 3) n) (else 0)))))
      (nth . ,(make-temporal-macro (lambda (x) `(ref nth-names (ordinal ,x)))))
-     (ref
+     (ref . ,temporal-unparseable:ref)
+     ;; TODO: link
+     (quotient
       . ,(make-unparseable
-          (lambda (seq n) ((if (vector? seq) vector-ref list-ref) seq n))
-          (lambda (seq n)
-            (let ((parse (alternate-parser seq)))
-              (lambda (str sc pass fail)
-                (parse str sc
-                       (lambda (i str sc fail)
-                         ;; convert back to a string to reparse
-                         (pass (number->string i) sc fail))
-                       fail))))))
-     (pad
-      . ,(make-unparseable temporal-pad
-                           temporal-unpad
-                           temporal-unpad-min-length
-                           temporal-unpad-max-length))
-     (pad0
-      . ,(make-unparseable (lambda (n x) (temporal-pad n x #\0))
-                           temporal-unpad
-                           temporal-unpad-min-length
-                           temporal-unpad-max-length))
-     (pad-right
-      . ,(make-unparseable temporal-pad-right
-                           temporal-unpad
-                           temporal-unpad-min-length
-                           temporal-unpad-max-length))
-     (pad0-right
-      . ,(make-unparseable (lambda (n x) (temporal-pad-right n x #\0))
-                           temporal-unpad
-                           temporal-unpad-min-length
-                           temporal-unpad-max-length))
-     (fix
-      . ,(make-unparseable temporal-fix
-                           temporal-unfix
-                           temporal-unfix-min-length
-                           temporal-unfix-max-length))
-     (fix0
-      . ,(make-unparseable (lambda (n x) (temporal-fix n x #\0))
-                           temporal-unfix
-                           temporal-unfix-min-length
-                           temporal-unfix-max-length))
-     (fix-right
-      . ,(make-unparseable temporal-fix-right
-                           temporal-unfix
-                           temporal-unfix-min-length
-                           temporal-unfix-max-length))
-     (fix0-right
-      . ,(make-unparseable (lambda (n x) (temporal-fix-right n x #\0))
-                           temporal-unfix
-                           temporal-unfix-min-length
-                           temporal-unfix-max-length))
+          (lambda (x m)
+            (quotient x m))
+          (lambda (x m)
+            (lambda (str sc kons pass fail)
+              (parse-integer
+               str sc #f
+               (lambda (i str sc fail)
+                 (pass (number->string i) sc fail))
+               fail)))
+          #f
+          #f
+          (lambda (x m)
+            (lambda (name value ls)
+              (cons (cons name (list 'solve
+                                     (lambda (x) (+ (* value m) x))
+                                     (lambda (v) (= value (quotient v m)))))
+                    ls)))))
+     (modulo
+      . ,(make-unparseable
+          (lambda (x m)
+            (modulo x m))
+          (lambda (x m)
+            (lambda (str sc kons pass fail)
+              (parse-integer
+               str sc #f
+               (lambda (i str sc fail)
+                 (pass (number->string i) sc fail))
+               fail)))
+          #f
+          #f
+          (lambda (x m)
+            (lambda (name value ls)
+              (cons (cons name (list 'solve
+                                     (lambda (x) (+ value (* x m)))
+                                     (lambda (v) (= value (modulo v m)))))
+                    ls)))))
+     (am/pm
+      (ref am/pm-names (quotient hour 12)))
+     (time-zone-abbrev
+      . ,(make-unparseable
+          temporal-time-zone-abbrev
+          (lambda _
+            (lambda (str sc kons pass fail)
+              (parse-pred str sc char-alphabetic?
+                          (lambda (tz-str sc2)
+                            (cond
+                             ((string->time-zone tz-str)
+                              => (lambda (tz) (pass tz sc2 fail)))
+                             (else (fail "unknown timezone" str)))))))))
+     (time-zone-offset
+      . ,(make-unparseable
+          (lambda (x) (temporal-offset->string (temporal-ref x 'time-zone)))
+          string->time-zone
+          (lambda _
+            (lambda (str sc kons pass fail)
+              (parse-pred str sc (lambda (ch)
+                                   (or (char-numeric? ch)
+                                       (memv ch '(#\+ #\- #\:))))
+                          (lambda (tz-str sc2)
+                            (cond
+                             ((string->time-zone tz-str)
+                              => (lambda (tz) (pass tz sc2 fail)))
+                             (else (fail "unknown timezone" str)))))))))
+     (pad . ,temporal-unparseable:pad)
+     (pad0 . ,temporal-unparseable:pad0)
+     (pad-right . ,temporal-unparseable:pad-right)
+     (pad0-right . ,temporal-unparseable:pad0-right)
+     (fit . ,temporal-unparseable:fit)
+     (fit0 . ,temporal-unparseable:fit0)
+     (fit-right . ,temporal-unparseable:fit-right)
+     (fit0-right . ,temporal-unparseable:fit0-right)
      )))
 
 (define (chronology-temporal-parser fmt chrono . o)
@@ -407,12 +594,15 @@
                      (strict? #f)
                      (lookup (make-locale-lookup chrono temporal-names)))
     ;; A compiled parser is a CPS-style procedure of the form:
-    ;;   (parse ls str sc pass fail)
-    ;; where ls is the accumulated alist of temporal key/values,
-    ;; str is the input string, sc the current cursor, and pass and
-    ;; fail the continuation thunks.  pass takes the signature:
+    ;;   (parse ls str sc kons pass fail)
+    ;; where ls is the accumulated alist of temporal key/values, str
+    ;; is the input string, sc the current cursor, kons the
+    ;; accumulator for new fields, and pass and fail the continuation
+    ;; thunks.  kons takes the signature:
+    ;;   (kons field-name field-value ls)
+    ;; while pass takes the signature:
     ;;   (pass ls str sc fail)
-    ;; whereas fail is of the form
+    ;; and fail is of the form
     ;;   (fail reason str)
     ;; In addition, we track optional validators for virtual fields,
     ;; such as day of week, and the compile step returns both.
@@ -433,7 +623,10 @@
                               (error "couldn't parse temporal" msg str))))
                        (lambda (str)
                          (chronology-try-alist->temporal
-                          (f '() str (string-cursor-start str) pass fail)
+                          (f '() str (string-cursor-start str)
+                             (lambda (name value ls)
+                               (cons (cons name value) ls))
+                             pass fail)
                           values
                           (lambda (res err)
                             (if strict?
@@ -453,28 +646,42 @@
         ;; An unparseable knows how to parse the string, but may need
         ;; to pass that value to the underlying parser.  It should
         ;; wrap at most one field, and assume the other arguments are
-        ;; passed directly to the parser.
-        (let ((fields (filter chrono-field? (cdr x))))
+        ;; passed directly to the parser.  Note parsing happens
+        ;; "inside-out" of the traditional sense, in that we apply the
+        ;; outer parser before passing that result to the inner.
+        (let ((fields (filter (lambda (x)
+                                (or (chrono-field? x)
+                                    (and (pair? x)
+                                         (unparseable? (car x))
+                                         (unparseable-parse (car x)))))
+                              (cdr x))))
           (case (length fields)
             ((0)
              (let ((parse (apply (unparseable-parse (car x)) (cdr x))))
-               (return (lambda (ls str sc pass fail)
+               (return (lambda (ls str sc kons pass fail)
                          ;; just drop the parsed value
-                         (parse str sc
+                         (parse str sc kons
                                 (lambda (substr sc fail)
                                   (pass ls str sc fail))
                                 fail)))))
             ((1)
              (let ((parse-field (compile (car fields) values))
                    (parse (apply (unparseable-parse (car x)) (cdr x))))
-               (return (lambda (ls str sc pass fail)
+               (return (lambda (ls str sc kons pass fail)
                          (parse str sc
-                                (lambda (substr sc fail)
+                                kons
+                                (lambda (substr sc2 fail)
                                   (parse-field ls
                                                substr
                                                (string-cursor-start substr)
+                                               (cond
+                                                ((unparseable-kons (car x))
+                                                 => (lambda (make-kons)
+                                                      (apply make-kons
+                                                             (cdr x))))
+                                                (else kons))
                                                (lambda (ls substr subsc fail)
-                                                 (pass ls str sc fail))
+                                                 (pass ls str sc2 fail))
                                                fail))
                                 fail)))))
             (else
@@ -483,27 +690,29 @@
         ;; Otherwise assume a pair is an implicit sequence.
         (let ((parse-car (compile (car x) values))
               (parse-cdr (compile (cdr x) values)))
-          (return (lambda (ls str sc pass fail)
+          (return (lambda (ls str sc kons pass fail)
                     (parse-car ls str sc
+                               kons
                                (lambda (ls str sc fail)
-                                 (parse-cdr ls str sc pass fail))
+                                 (parse-cdr ls str sc kons pass fail))
                                fail)))))
        ((null? x)
-        (return (lambda (ls str sc pass fail) (pass ls str sc fail))))
+        (return (lambda (ls str sc kons pass fail) (pass ls str sc fail))))
        ((chrono-field? x)
         (return (chrono-field-parser x)))
        ((virtual-field? x)
         (return (virtual-field-parser x)))
        ((string? x)
         (return
-         (lambda (ls str sc pass fail)
+         (lambda (ls str sc kons pass fail)
            (parse-literal
             str sc x
             (lambda (sc) (pass ls str sc fail))
             (lambda (sc)
               (fail (string-append
                      "expected value not found at "
-                     (number->string (string-cursor->index str sc)) ": " x)
+                     (number->string (string-cursor->index str sc))
+                     ": '" x "'")
                     str))))))
        ((number? x)
         ;; TODO: allow alternate numeric formats

@@ -171,11 +171,11 @@
                 (temporal->string dt '(year "/" month "/" day)))
             (test "2021/09/08"
                 (temporal->string dt
-                                  '(year "/" (fix0 2 month) "/" (fix0 2 day))))
+                                  '(year "/" (fit0 2 month) "/" (fit0 2 day))))
             (test "3 2021/09/08"
                 (temporal->string
                  dt
-                 '(day-of-week " " year "/" (fix0 2 month) "/" (fix0 2 day))))
+                 '(day-of-week " " year "/" (fit0 2 month) "/" (fit0 2 day))))
             (test "8th of September, 2021"
                 (temporal->string dt
                                   '(day (nth day) " of " month-name ", " year)))
@@ -211,9 +211,11 @@
             (test-parse `((year . 2013) (month . 12) (day . 12))
                         "2013-12-12"
                         '(year "-" month "-" day))
+            (test-parse '((year . 2014) (month . 4) (day . 29))
+                        "2014-04-29" '(year "-" month "-" day))
             (test-parse `((year . 2021) (month . 10) (day . 2))
                         "20211002"
-                        '(year (fix0 2 month) (fix0 2 day)))
+                        '(year (fit0 2 month) (fit0 2 day)))
             (test-parse `((year . 1) (month . 2) (day . 3))
                         "123"
                         '(year month day))
@@ -252,6 +254,21 @@
                         "Thursday the 8th of September, 2021"
                         '(day-of-week-name " the " day (nth day)
                                            " of " month-name ", " year))
+            (test `((year . 2022) (month . 1) (day . 16)
+                    (hour . 21) (minute . 13) (second . 1)
+                    (nanosecond . 0) (fold . 0))
+                (cdr (temporal->alist
+                      (string->temporal
+                       "Sun 16 Jan 2022 09:13:01 PM JST"
+                       '((fit-right 3 day-of-week-name) " "
+                         day " "
+                         (fit-right 3 month-name) " "
+                         (fit0 4 year) " "
+                         (fit0 2 (modulo hour 12)) ":"
+                         (fit0 2 minute) ":"
+                         (fit0 2 second) " "
+                         am/pm " "
+                         time-zone-abbrev)))))
             (test-error
              (string->temporal
               "Thursday the 8th of September, 2021"

@@ -1,6 +1,6 @@
 
 (define-library (chibi chrono base)
-  (import (scheme base) (scheme hash-table) (scheme time)
+  (import (scheme base) (scheme hash-table) (scheme list) (scheme time)
           (srfi 99 records inspection)
           (chibi assert) (chibi optional))
   (export

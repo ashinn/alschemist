@@ -44,7 +44,7 @@
   (messages chronology-messages))
 
 (define-record-type Chrono-Field
-  (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default)
+  (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default parser formatter)
   chrono-field?
   (name chrono-field-name)
   (getter chrono-field-getter)
@@ -54,12 +54,15 @@
   (get-ub chrono-field-get-ub)
   (updater chrono-field-updater)
   (adjuster chrono-field-adjuster)
-  (default chrono-field-default))
+  (default chrono-field-default)
+  (parser chrono-field-parser)
+  (formatter chrono-field-formatter))
 
 (define (make-chrono-field name getter . o)
   (let-optionals* o ((lb #f) (ub #f) (get-lb #f) (get-ub #f)
-                     (updater #f) (adjuster #f) (default #f))
-    (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default)))
+                     (updater #f) (adjuster #f) (default #f)
+                     (parser #f) (formatter #f))
+    (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default parser formatter)))
 
 (define (chrono-field-lower-bound field reverse-prev-values)
   (cond
@@ -109,24 +112,28 @@
              (else #t))))
 
 (define-syntax chrono-field
-  (syntax-rules (lower upper get-lower get-upper updater adjuster default)
-    ((_ name get lb ub get-lb get-ub up adj dflt ())
-     (%make-chrono-field name get lb ub get-lb get-ub up adj dflt))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((lower x) . rest))
-     (chrono-field name get x ub get-lb get-ub up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((upper x) . rest))
-     (chrono-field name get lb x get-lb get-ub up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((get-lower x) . rest))
-     (chrono-field name get lb ub x get-ub up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((get-upper x) . rest))
-     (chrono-field name get lb ub get-lb x up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((updater x) . rest))
-     (chrono-field name get lb ub get-lb get-ub up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((adjuster x) . rest))
-     (chrono-field name get lb ub get-lb get-ub up adj dflt rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((default x) . rest))
-     (chrono-field name get lb ub get-lb get-ub up adj x rest))
-    ((_ name get lb ub get-lb get-ub up adj dflt ((other . x) . rest))
+  (syntax-rules (lower upper get-lower get-upper updater adjuster default parser formatter)
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ())
+     (%make-chrono-field name get lb ub get-lb get-ub up adj dflt p f))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((lower x) . rest))
+     (chrono-field name get x ub get-lb get-ub up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((upper x) . rest))
+     (chrono-field name get lb x get-lb get-ub up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((get-lower x) . rest))
+     (chrono-field name get lb ub x get-ub up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((get-upper x) . rest))
+     (chrono-field name get lb ub get-lb x up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((updater x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((adjuster x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((default x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj x p f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((parser x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt x f rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((formatter x) . rest))
+     (chrono-field name get lb ub get-lb get-ub up adj dflt p x rest))
+    ((_ name get lb ub get-lb get-ub up adj dflt p f ((other . x) . rest))
      (syntax-error "unknown chrono-field attribute" (other . x)))
     ))
 
@@ -152,7 +159,8 @@
                 (make-chronology
                  'name
                  (list
-                  (chrono-field 'field getter #f #f #f #f #f #f #f (spec ...))
+                  (chrono-field 'field getter
+                                #f #f #f #f #f #f #f #f #f (spec ...))
                   ...)
                  (list (cons 'vfield vgetter) ...)
                  instance-constructor
@@ -405,6 +413,23 @@
                    (else (lp (cdr ls2) (cons (car ls2) left))))))
           (else (lp (cdr ls1))))))
 
+(define (assq-partition key ls)
+  (partition (lambda (x) (eq? key (car x))) ls))
+
+(define (solve-equations ls chrono-field)
+  (if (null? ls)
+      0
+      (let lp ((x 0))
+        (let ((y ((caar ls) x)))
+          (cond
+           ((every (lambda (eqn) ((cadr eqn) y)) (cdr ls))
+            y)
+           ((> x 10000)
+            ;;(error "equations don't resolve")
+            #f)
+           (else
+            (lp (+ x 1))))))))
+
 ;;> Attempts to convert the given alist of field names to values to a
 ;;> temporal in \var{chronology}.  Virtual fields in the alist are not
 ;;> normative, but used for validation, e.g. if day-of-week is 0 and
@@ -439,9 +464,21 @@
       => (lambda (left+right)
            (let ((left (car left+right))
                  (right (cdr left+right)))
-             (lp (cdr fields)
-                 (cons (cdar right) args)
-                 (append left (cdr right))))))
+             (if (and (pair? (cdar right))
+                      (eq? 'solve (car (cdar right))))
+                 ;; TODO: collect all eqns
+                 (let-values (((eqns rest)
+                               (assq-partition (chrono-field-name (car fields))
+                                               (cdr right))))
+                   (lp (cdr fields)
+                       (cons (solve-equations (cons (cdr (cdar right))
+                                                    (map cddr eqns))
+                                              (car fields))
+                             args)
+                       (append left rest)))
+                 (lp (cdr fields)
+                     (cons (cdar right) args)
+                     (append left (cdr right)))))))
      ((chrono-field-get-lb (car fields))
       => (lambda (get-lb)
            (lp (cdr fields)
