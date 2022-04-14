@@ -34,6 +34,7 @@
    mean geometric-mean harmonic-mean quadratic-mean
    mode median
    stdev standard-deviation variance covariance
+   pooled-variance pooled-standard-deviation
    kurtosis excess-kurtosis skewness
    coefficient-of-variation
    percentile minimum maximum

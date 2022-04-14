@@ -760,6 +760,23 @@
 ;;> An alias for \scheme{standard-deviation}.
 (define stdev standard-deviation)
 
+;;> Returns the weighted pooled variance of the distributions in the
+;;> list \var{dists}.  If any of the distributions are pure (infinite
+;;> size and therefore weight) a simpel mean of their variances is
+;;> taken.
+(define (pooled-variance dists)
+  (let ((pure-dists (filter distribution-pure? dists)))
+    (if (pair? pure-dists)
+        (mean (map variance pure-dists))
+        (/ (map-sum (lambda (dist) (* (- (size dist) 1) (variance dist)))
+                    dists)
+           (- (map-sum size dists) (length dists))))))
+
+;;> Returns the weighted pooled standard deviation of the
+;;> distributions \var{dists}, i.e. the sqrt of the pooled-variance.
+(define (pooled-standard-deviation dists)
+  (sqrt (pooled-variance dists)))
+
 ;;> \procedure{(coefficient-of-variation dist [getter])}
 ;;> Returns the coefficient of variation, aka the relative standard
 ;;> deviation (RSD) of \var{dist}, the ratio of the
@@ -1232,14 +1249,10 @@
 ;;> (z-statistic (summary-distribution 'mean: 8.3 'size: 5197)
 ;;>              (normal-distribution 7.8 23.1))}
 (define (z-statistic sample dist)
-  (if (not (eq? 'normal (distribution-name dist)))
+  (if (and (distribution-pure? dist)
+           (not (eq? 'normal (distribution-name dist))))
       (error "z-statistic expected a normal distribution" dist))
-  (let ((sigma (sqrt (+ (/ (or (variance sample) (variance dist))
-                           (size sample))
-                        (/ (variance dist)
-                           (if (infinite? (size dist))
-                               (size sample)
-                               (size dist)))))))
+  (let ((sigma (pooled-standard-deviation (list sample dist))))
     (standard-score (mean sample) (mean dist) sigma)))
 
 ;;> AKA the Student's t-test, after the pen name "Student" used by
@@ -1319,9 +1332,7 @@
       (if (< 1/2 (/ s1 s2) 2)
           (/ (- m1 m2)
              (* (harmonic-mean (list n1 n2))
-                (sqrt (/ (+ (* (- n1 1) (square s1))
-                            (* (- n2 1) (square s2)))
-                         (+ n1 n2 -2)))))
+                (pooled-standard-deviation (list dist1 dist2))))
           ;; Welch's t-test (unequal variance)
           (/ (- m1 m2)
              (sqrt (+ (/ (square s1) n1)
