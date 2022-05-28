@@ -15,10 +15,11 @@
                 ((A . D) . 2) ((D . A) . 2) ((A . C) . 2) ((C . A) . 2)
                 ((D . C) . 1) ((D . B) . 1) ((C . B) . 1) ((B . A) . 1))
             (sort-pairs (tally-votes votes)))
-        (test  '(A B C D) (rank-votes votes)))
+        (test  '(A B C D) (tideman-rank votes))
+        (test  '(A C D B) (instant-runoff-rank votes)))
       ;; rank from pre-tallied pairwise outcomes
       (let ((vote-tally
-             (pairs->vote-tally
+             (pairs->paired-tally
               '(((memphis . nashville) . 42)
                 ((memphis . chattanooga) . 42)
                 ((memphis . knoxville) . 42)
@@ -32,5 +33,16 @@
                 ((knoxville . nashville) . 32)
                 ((knoxville . chattanooga) . 17)))))
         (test '(nashville chattanooga knoxville memphis)
-            (rank-votes vote-tally)))
+            (tideman-rank vote-tally)))
+      ;; IRV rank from distinct
+      (let ((distinct-tally
+             (alist->distinct-tally
+              '((((A) (B)) . 36)
+                (((B) (A)) . 10)
+                (((B) (C)) . 20)
+                (((C) (B)) . 34)))))
+        ;; B is eliminated first with only 30 votes
+        ;; then C beats A with 54 to 46 votes
+        (test '(C A B)
+            (instant-runoff-rank distinct-tally)))
       (test-end))))
