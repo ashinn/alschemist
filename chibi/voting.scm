@@ -1,12 +1,89 @@
 
-(define (vector-inc! vec index x)
-  (vector-set! vec index (+ x (vector-ref vec index))))
+;;> Preferential voting utilities to help come to reasonable decisions
+;;> when there are more than 2 options.  Currently we provide 3 common
+;;> voting implementations, with batch and incremental tallying.
+;;>
+;;> In this library, a \scheme{candidate} is a non-numeric object
+;;> compared via \scheme{eq?} such as a symbol and a \scheme{tally} is
+;;> an object aggregating \var{votes}.  A single \scheme{vote} is a
+;;> list of lists of candidates in order of preference.  The inner
+;;> lists may have multiple elements to represent an equal preference
+;;> among the options, so that the vote \scheme{((A B) (C))}
+;;> represents a preference of either \scheme{A} or \scheme{B} equally
+;;> over \scheme{C}.  A vote should not have any duplicate candidates,
+;;> but need not include all eligible candidates.
 
-(define (assq-inc! ls key count)
-  (cond ((assq key ls)
-         => (lambda (cell) (set-cdr! cell (+ (cdr cell) count)) ls))
-        (else (cons (cons key count) ls))))
+;;> \section{Ranking}
 
+;;> Aka "ranked pairs" voting, returns a list of candidates ordered by
+;;> the largest pairwise preference above other candidates.  \var{x}
+;;> should be either a \var{tally} or alist of votes.  Unlike
+;;> \scheme{plurality-rank} and \scheme{instant-runoff-rank} satisfies
+;;> the Condorcet winner and loser criteria, the Smith criterion, and
+;;> various other criteria desirable in motivating people to vote
+;;> honestly and without strategy for their actual preferences.
+;;> Recommended for most use cases.
+(define (tideman-rank x)
+  (let ((tally (if (tally? x) x (votes->paired-tally x))))
+    (topological-sort (lock-pairs (map car (sort-pairs tally))))))
+
+;;> Aka "first-past-the-post" voting, returns a list of candidates
+;;> ordered by their frequency as the first place vote.  This is the
+;;> voting used in most elections.  \var{x}, which can be either a
+;;> \var{tally} or alist of votes.  The keys of the alist should be
+;;> some identifier of the voter, but are for debugging purposes and
+;;> not actually used.  Second or later preferences are allowed but
+;;> ignored by the algorithm.  However, unlike traditional plurality
+;;> voting, each vote may have multiple first place choice candidates
+;;> which are counted equally.  If equal weighted votes are not
+;;> desired they should be filtered separately prior to tallying.
+(define (plurality-rank x)
+  (let* ((tally (if (tally? x) x (votes->tally x)))
+         (candidates (tally-candidates tally))
+         (first-counts (tally-first-counts tally)))
+    (map car
+         (list-sort (lambda (a b) (> (cdr a) (cdr b)))
+                    (map (lambda (i)
+                           (cons (vector-ref candidates i)
+                                 (vector-ref first-counts i)))
+                         (iota (vector-length candidates)))))))
+
+;;> Aka "IRV" or "ranked-choice voting" (RCV), returns a list of
+;;> candidates ordered by successive rounds of removing the last place
+;;> candidate.  This is the system used in most of Australia's
+;;> elections among other uses, and as such is perhaps the best known
+;;> preferential voting system.  However, it fails to satisfy the
+;;> Condorcet winner criteria, which is to say that even if there is a
+;;> candidate preferred pairwise over all other candidates, they may
+;;> not necessarily win.  \var{x} should be either a \var{tally} or
+;;> alist of votes.  Unlike traditional IRV this implementation allows
+;;> equal weighted votes which should be filtered prior to tallying if
+;;> undesired.
+(define (instant-runoff-rank x)
+  (let* ((tally (if (tally? x) x (votes->distinct-tally x)))
+         (ls (tally->distinct-alist tally)))
+    (let lp ((ls ls)
+             (result '()))
+      (if (and (pair? ls)
+               (null? (cdr ls))
+               (null? (caar ls)))
+          result
+          (let ((counts (first-pref-counts ls)))
+            (if (null? counts)
+                result
+                (let ((candidate (min-candidate counts)))
+                  (lp (remove-candidate ls candidate)
+                      (cons candidate result)))))))))
+
+;;> \section{Tallying}
+
+;;> A \scheme{Tally} is an object holding an aggregated count of
+;;> preferential votes.  On creation you specify what level of
+;;> aggregation is done.  The most general case is \scheme{distinct},
+;;> which keeps a count of each unique preferential vote.  The next
+;;> most general is \scheme{pairwise}, which counts just pairwise
+;;> preferences, followed by the default which just counts the number
+;;> of times a candidate appeared as the first choice.
 (define-record-type Tally
   (%make-tally candidates count first-counts pairwise distinct)
   tally?
@@ -36,6 +113,8 @@
                 x))
          vote)))
 
+;;> Returns a tally of candidate first place counts.  \var{candidates}
+;;> should be a vector of all valid candidates.
 (define make-tally
   (opt*-lambda (candidates
                 (count 0)
@@ -44,6 +123,7 @@
                 (distinct #f))
     (%make-tally candidates count first-counts pairwise distinct)))
 
+;;> Returns a tally of candidate vs candidate pairwise counts.
 (define make-paired-tally
   (opt*-lambda (candidates
                 (count 0)
@@ -52,6 +132,8 @@
                 (distinct #f))
     (%make-tally candidates count first-counts pairwise distinct)))
 
+;;> Returns a tally of counts of each distinct preferential vote, in
+;;> addition to pairwise and first place counts.
 (define make-distinct-tally
   (opt*-lambda (candidates
                 (count 0)
@@ -74,6 +156,9 @@
 (define (tally-pairwise-ref tally i j)
   (vector-ref (tally-pairwise tally)
               (tally-pairwise-index tally i j)))
+
+(define (vector-inc! vec index x)
+  (vector-set! vec index (+ x (vector-ref vec index))))
 
 (define (tally-inc-pairwise! tally vote . o)
   (let* ((count (if (pair? o) (car o) 1))
@@ -111,6 +196,7 @@
          (car ls))
         (lp (cdr ls)))))))
 
+;;> Add a new \var{vote} to the \var{tally}.
 (define (tally-inc! tally vote . o)
   (let ((count (if (pair? o) (car o) 1)))
     ;; always update count and first-counts
@@ -134,25 +220,33 @@
     (when (tally-pairwise tally)
       (tally-inc-pairwise! tally vote count))))
 
+;;> Returns a \scheme{tally} for the votes alist \var{votes}.
 (define (votes->tally votes)
   (let ((res (make-tally (extract-candidates votes))))
     (for-each (lambda (x) (tally-inc! res (cdr x))) votes)
     res))
 
+;;> Returns a \scheme{tally} with pairwise aggregation for the votes
+;;> alist \var{votes}.
 (define (votes->paired-tally votes . o)
   (let* ((candidates (if (pair? o) (car o) (extract-candidates votes)))
          (res (make-paired-tally candidates)))
     (for-each (lambda (vote) (tally-inc! res (cdr vote))) votes)
     res))
 
+;;> Returns a \scheme{tally} with distinct aggregation for the votes
+;;> alist \var{votes}.
 (define (votes->distinct-tally votes)
   (let ((res (make-distinct-tally (extract-candidates votes))))
     (for-each (lambda (x) (tally-inc! res (cdr x))) votes)
     res))
 
+;;> Returns an alist of distinct vote to count for the given \var{tally}.
 (define (tally->distinct-alist tally)
   (hash-table->alist (tally-distinct tally)))
 
+;;> Returns a new tally with distinct aggregation for the given vote
+;;> to count alist.
 (define (distinct-alist->tally ls)
   (let ((res (make-distinct-tally
               (list->vector
@@ -180,6 +274,8 @@
         (list->vector (reverse res))
         (lp (cdr ls) (join-candidates (cdar ls) res)))))
 
+;;> Returns an alist with \scheme{(candidate . candidate)} pair keys
+;;> and count values for the given \var{tally}.
 (define (tally->pairs tally)
   (let* ((candidates (tally-candidates tally))
          (num-candidates (vector-length candidates)))
@@ -197,6 +293,9 @@
                  ((>= j num-candidates) ls))))
         ((= i num-candidates) ls))))
 
+;;> Returns a new \scheme{tally} with pairwise aggregation for the
+;;> given alist of pairs having \scheme{(candidate . candidate)} keys
+;;> and count values.
 (define (pairs->tally pairs . o)
   (let* ((count (if (pair? o)
                     (car o)
@@ -298,9 +397,10 @@
          (else
           (scan-deps (cdr deps) seen (cons (car deps) res)))))))))
 
-(define (tideman-rank x)
-  (let ((tally (if (tally? x) x (votes->paired-tally x))))
-    (topological-sort (lock-pairs (map car (sort-pairs tally))))))
+(define (assq-inc! ls key count)
+  (cond ((assq key ls)
+         => (lambda (cell) (set-cdr! cell (+ (cdr cell) count)) ls))
+        (else (cons (cons key count) ls))))
 
 (define (first-pref-counts ls)
   (let lp ((ls ls) (counts '()))
@@ -337,30 +437,3 @@
            (hash-table-update!/default counts vote (lambda (y) (+ y (cdr x))) 0))))
      ls)
     (hash-table->alist counts)))
-
-(define (instant-runoff-rank x)
-  (let* ((tally (if (tally? x) x (votes->distinct-tally x)))
-         (ls (tally->distinct-alist tally)))
-    (let lp ((ls ls)
-             (result '()))
-      (if (and (pair? ls)
-               (null? (cdr ls))
-               (null? (caar ls)))
-          result
-          (let ((counts (first-pref-counts ls)))
-            (if (null? counts)
-                result
-                (let ((candidate (min-candidate counts)))
-                  (lp (remove-candidate ls candidate)
-                      (cons candidate result)))))))))
-
-(define (plurality-rank x)
-  (let* ((tally (if (tally? x) x (votes->tally x)))
-         (candidates (tally-candidates tally))
-         (first-counts (tally-first-counts tally)))
-    (map car
-         (list-sort (lambda (a b) (> (cdr a) (cdr b)))
-                    (map (lambda (i)
-                           (cons (vector-ref candidates i)
-                                 (vector-ref first-counts i)))
-                         (iota (vector-length candidates)))))))
