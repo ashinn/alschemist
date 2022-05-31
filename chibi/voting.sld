@@ -11,5 +11,5 @@
           distinct-tally-votes distinct-tally-ref distinct-tally-inc!
           distinct-tally->alist alist->distinct-tally
           sort-pairs lock-pairs
-          tideman-rank instant-runoff-rank)
+          plurality-rank tideman-rank instant-runoff-rank)
   (include "voting.scm"))

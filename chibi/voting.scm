@@ -1,19 +1,27 @@
 
+(define (candidate-index candidates x)
+  (or (vector-index (lambda (y) (eq? x y)) candidates)
+      (error "unknown candidate" x)))
+
 ;; A tally of the number of times each distinct vote is seen, useful
 ;; for systems such as instant runoff.
 (define-record-type Distinct-Tally
-  (%make-distinct-tally candidates count votes)
+  (%make-distinct-tally candidates count votes first-count)
   distinct-tally?
   (candidates distinct-tally-candidates)
   (count distinct-tally-count distinct-tally-count-set!)
-  (votes distinct-tally-votes))
+  (votes distinct-tally-votes)
+  (first-count distinct-tally-first-count))
 
 (define (make-distinct-tally candidates . o)
   (let ((count (if (pair? o) (car o) 0))
         (votes (if (and (pair? o) (pair? (cdr o)))
                    (cadr o)
-                   (make-hash-table equal?))))
-    (%make-distinct-tally candidates count votes)))
+                   (make-hash-table equal?)))
+        (first-count (if (and (pair? o) (pair? (cdr o)) (pair? (cddr o)))
+                         (car (cddr o))
+                         (make-vector (vector-length candidates) 0))))
+    (%make-distinct-tally candidates count votes first-count)))
 
 (define (distinct-tally-ref distinct-tally vote)
   (hash-table-ref/default (distinct-tally-votes distinct-tally) vote 0))
@@ -23,6 +31,15 @@
     (distinct-tally-count-set! distinct-tally
                                (+ (distinct-tally-count distinct-tally)
                                   count))
+    (let ((first-count (distinct-tally-first-count distinct-tally)))
+      (for-each
+       (lambda (x)
+         (let ((i (if (integer? x)
+                      x
+                      (candidate-index
+                       (distinct-tally-candidates distinct-tally) x))))
+           (vector-set! first-count i (+ count (vector-ref first-count i)))))
+       (car vote)))
     (hash-table-update!/default
      (distinct-tally-votes distinct-tally)
      vote
@@ -33,14 +50,14 @@
   (hash-table->alist (distinct-tally-votes distinct-tally)))
 
 (define (alist->distinct-tally ls)
-  (let ((count (fold (lambda (x sum) (+ (cdr x) sum)) 0 ls))
-        (candidates
-         (fold (lambda (x res)
-                 (delete-duplicates (append (concatenate x) res)))
-               '()
-               ls))
-        (votes (alist->hash-table ls equal?)))
-    (make-distinct-tally count candidates votes)))
+  (let ((res (make-distinct-tally
+              (list->vector
+               (fold (lambda (x res)
+                       (delete-duplicates (append (concatenate (car x)) res)))
+                     '()
+                     ls)))))
+    (for-each (lambda (x) (distinct-tally-inc! res (car x) (cdr x))) ls)
+    res))
 
 ;; A tally of how each candidate ranks over each other, useful for
 ;; systems such as Tideman's (i.e. ranked pairs).
@@ -96,10 +113,6 @@
     (if (null? ls)
         (list->vector (reverse res))
         (lp (cdr ls) (join-candidates (cdar ls) res)))))
-
-(define (candidate-index candidates x)
-  (or (vector-index (lambda (y) (eq? x y)) candidates)
-      (error "unknown candidate" x)))
 
 (define (normalize-vote vote candidates)
   (map (lambda (x)
@@ -265,9 +278,9 @@
   (let ((paired-tally (if (paired-tally? x) x (tally-votes x))))
     (topological-sort (lock-pairs (map car (sort-pairs paired-tally))))))
 
-(define (votes->distinct-tally ls)
-  (let ((res (make-distinct-tally '())))
-    (for-each (lambda (x) (distinct-tally-inc! res (cdr x))) ls)
+(define (votes->distinct-tally votes)
+  (let ((res (make-distinct-tally (extract-candidates votes))))
+    (for-each (lambda (x) (distinct-tally-inc! res (cdr x))) votes)
     res))
 
 (define (assq-inc! ls key count)
@@ -326,3 +339,14 @@
                 (let ((candidate (min-candidate counts)))
                   (lp (remove-candidate ls candidate)
                       (cons candidate result)))))))))
+
+(define (plurality-rank x)
+  (let* ((distinct-tally (if (distinct-tally? x) x (votes->distinct-tally x)))
+         (candidates (distinct-tally-candidates distinct-tally))
+         (first-count (distinct-tally-first-count distinct-tally)))
+    (map car
+         (list-sort (lambda (a b) (> (cdr a) (cdr b)))
+                    (map (lambda (i)
+                           (cons (vector-ref candidates i)
+                                 (vector-ref first-count i)))
+                         (iota (vector-length candidates)))))))

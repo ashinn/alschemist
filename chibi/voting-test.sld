@@ -41,8 +41,11 @@
                 (((B) (A)) . 10)
                 (((B) (C)) . 20)
                 (((C) (B)) . 34)))))
-        ;; B is eliminated first with only 30 votes
-        ;; then C beats A with 54 to 46 votes
+        ;; B is eliminated first with only 30 votes then C beats A
+        ;; with 54 to 46 votes
         (test '(C A B)
-            (instant-runoff-rank distinct-tally)))
+            (instant-runoff-rank distinct-tally))
+        ;; Using only first choices gives a different result.
+        (test '(A C B)
+            (plurality-rank distinct-tally)))
       (test-end))))
