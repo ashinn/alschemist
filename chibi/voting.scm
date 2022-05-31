@@ -1,101 +1,167 @@
 
+(define (vector-inc! vec index x)
+  (vector-set! vec index (+ x (vector-ref vec index))))
+
+(define (assq-inc! ls key count)
+  (cond ((assq key ls)
+         => (lambda (cell) (set-cdr! cell (+ (cdr cell) count)) ls))
+        (else (cons (cons key count) ls))))
+
+(define-record-type Tally
+  (%make-tally candidates count first-counts pairwise distinct)
+  tally?
+  (candidates tally-candidates)
+  (count tally-count tally-count-set!)
+  (first-counts tally-first-counts)
+  (pairwise tally-pairwise)
+  (distinct tally-distinct))
+
 (define (candidate-index candidates x)
-  (or (vector-index (lambda (y) (eq? x y)) candidates)
-      (error "unknown candidate" x)))
+  (if (integer? x)
+      (if (or (inexact? x) (negative? x))
+          (error "candidate should be a symbol or natural number" x)
+          x)
+      (or (vector-index (lambda (y) (eq? x y))
+                        (if (tally? candidates)
+                            (tally-candidates candidates)
+                            candidates))
+          (error "unknown candidate" x))))
 
-;; A tally of the number of times each distinct vote is seen, useful
-;; for systems such as instant runoff.
-(define-record-type Distinct-Tally
-  (%make-distinct-tally candidates count votes first-count)
-  distinct-tally?
-  (candidates distinct-tally-candidates)
-  (count distinct-tally-count distinct-tally-count-set!)
-  (votes distinct-tally-votes)
-  (first-count distinct-tally-first-count))
+(define (normalize-vote vote candidates)
+  (let ((candidates (if (tally? candidates)
+                        (tally-candidates candidates)
+                        candidates)))
+    (map (lambda (x)
+           (map (lambda (y) (candidate-index candidates y))
+                x))
+         vote)))
 
-(define (make-distinct-tally candidates . o)
-  (let ((count (if (pair? o) (car o) 0))
-        (votes (if (and (pair? o) (pair? (cdr o)))
-                   (cadr o)
-                   (make-hash-table equal?)))
-        (first-count (if (and (pair? o) (pair? (cdr o)) (pair? (cddr o)))
-                         (car (cddr o))
-                         (make-vector (vector-length candidates) 0))))
-    (%make-distinct-tally candidates count votes first-count)))
+(define make-tally
+  (opt*-lambda (candidates
+                (count 0)
+                (first-counts (make-vector (vector-length candidates) 0))
+                (pairwise #f)
+                (distinct #f))
+    (%make-tally candidates count first-counts pairwise distinct)))
 
-(define (distinct-tally-ref distinct-tally vote)
-  (hash-table-ref/default (distinct-tally-votes distinct-tally) vote 0))
+(define make-paired-tally
+  (opt*-lambda (candidates
+                (count 0)
+                (first-counts (make-vector (vector-length candidates) 0))
+                (pairwise (make-vector (square (vector-length candidates)) 0))
+                (distinct #f))
+    (%make-tally candidates count first-counts pairwise distinct)))
 
-(define (distinct-tally-inc! distinct-tally vote . o)
+(define make-distinct-tally
+  (opt*-lambda (candidates
+                (count 0)
+                (first-counts (make-vector (vector-length candidates) 0))
+                (pairwise (make-vector (square (vector-length candidates)) 0))
+                (distinct (make-hash-table equal?)))
+    (%make-tally candidates count first-counts pairwise distinct)))
+
+(define (tally-num-candidates tally)
+  (vector-length (tally-candidates tally)))
+
+(define (tally-distinct-ref tally vote)
+  (hash-table-ref/default (tally-distinct tally) vote 0))
+
+(define (tally-pairwise-index tally i j)
+  (+ (* (candidate-index (tally-candidates tally) i)
+        (tally-num-candidates tally))
+     (candidate-index (tally-candidates tally) j)))
+
+(define (tally-pairwise-ref tally i j)
+  (vector-ref (tally-pairwise tally)
+              (tally-pairwise-index tally i j)))
+
+(define (tally-inc-pairwise! tally vote . o)
+  (let* ((count (if (pair? o) (car o) 1))
+         (candidates (tally-candidates tally))
+         (vote (normalize-vote vote candidates))
+         (used (list-sort < (concatenate vote)))
+         (num-candidates (vector-length candidates))
+         (vec (tally-pairwise tally)))
+    (let lp ((ls vote))
+      (cond
+       ((null? ls)
+        (let lp ((i 0) (ls used))
+          (when (< i num-candidates)
+            (cond
+             ((and (pair? ls) (= i (car ls)))
+              ;; i was used, keep going
+              (lp (+ i 1) (cdr ls)))
+             (else
+              ;; record a vote of each used candidate over i
+              (for-each
+               (lambda (j)
+                 (vector-inc! vec (tally-pairwise-index tally j i) count))
+               used)
+              (lp (+ i 1) ls))))))
+       (else
+        (for-each
+         (lambda (j)
+           (for-each
+            (lambda (i-ls)
+              (for-each
+               (lambda (i)
+                 (vector-inc! vec (tally-pairwise-index tally j i) count))
+               i-ls))
+            (cdr ls)))
+         (car ls))
+        (lp (cdr ls)))))))
+
+(define (tally-inc! tally vote . o)
   (let ((count (if (pair? o) (car o) 1)))
-    (distinct-tally-count-set! distinct-tally
-                               (+ (distinct-tally-count distinct-tally)
-                                  count))
-    (let ((first-count (distinct-tally-first-count distinct-tally)))
+    ;; always update count and first-counts
+    (tally-count-set! tally (+ (tally-count tally) count))
+    (let ((first-counts (tally-first-counts tally)))
       (for-each
        (lambda (x)
          (let ((i (if (integer? x)
                       x
                       (candidate-index
-                       (distinct-tally-candidates distinct-tally) x))))
-           (vector-set! first-count i (+ count (vector-ref first-count i)))))
+                       (tally-candidates tally) x))))
+           (vector-set! first-counts i (+ count (vector-ref first-counts i)))))
        (car vote)))
-    (hash-table-update!/default
-     (distinct-tally-votes distinct-tally)
-     vote
-     (lambda (x) (+ x count))
-     0)))
+    ;; update distinct and pairwise if present
+    (when (tally-distinct tally)
+      (hash-table-update!/default
+       (tally-distinct tally)
+       vote
+       (lambda (x) (+ x count))
+       0))
+    (when (tally-pairwise tally)
+      (tally-inc-pairwise! tally vote count))))
 
-(define (distinct-tally->alist distinct-tally)
-  (hash-table->alist (distinct-tally-votes distinct-tally)))
+(define (votes->tally votes)
+  (let ((res (make-tally (extract-candidates votes))))
+    (for-each (lambda (x) (tally-inc! res (cdr x))) votes)
+    res))
 
-(define (alist->distinct-tally ls)
+(define (votes->paired-tally votes . o)
+  (let* ((candidates (if (pair? o) (car o) (extract-candidates votes)))
+         (res (make-paired-tally candidates)))
+    (for-each (lambda (vote) (tally-inc! res (cdr vote))) votes)
+    res))
+
+(define (votes->distinct-tally votes)
+  (let ((res (make-distinct-tally (extract-candidates votes))))
+    (for-each (lambda (x) (tally-inc! res (cdr x))) votes)
+    res))
+
+(define (tally->distinct-alist tally)
+  (hash-table->alist (tally-distinct tally)))
+
+(define (distinct-alist->tally ls)
   (let ((res (make-distinct-tally
               (list->vector
                (fold (lambda (x res)
                        (delete-duplicates (append (concatenate (car x)) res)))
                      '()
                      ls)))))
-    (for-each (lambda (x) (distinct-tally-inc! res (car x) (cdr x))) ls)
+    (for-each (lambda (x) (tally-inc! res (car x) (cdr x))) ls)
     res))
-
-;; A tally of how each candidate ranks over each other, useful for
-;; systems such as Tideman's (i.e. ranked pairs).
-(define-record-type Paired-Tally
-  (%make-paired-tally candidates count pairwise)
-  paired-tally?
-  (candidates paired-tally-candidates)
-  (count paired-tally-count paired-tally-count-set!)
-  (pairwise paired-tally-pairwise))
-
-(define (make-paired-tally candidates . o)
-  (let ((count (if (pair? o) (car o) 0))
-        (pairwise (if (and (pair? o) (pair? (cdr o)))
-                      (cadr o)
-                      (make-vector (square (vector-length candidates)) 0))))
-    (%make-paired-tally candidates count pairwise)))
-
-;; the number of votes for i over j
-(define (paired-tally-ref paired-tally i j)
-  (let* ((candidates (paired-tally-candidates paired-tally))
-         (i (if (integer? i) i (candidate-index candidates i)))
-         (j (if (integer? j) j (candidate-index candidates j))))
-    (vector-ref (paired-tally-pairwise paired-tally)
-                (+ (* i (vector-length candidates)) j))))
-
-;; increment the number of votes for i over j
-(define (paired-tally-inc! paired-tally i j i-count j-count)
-  (let* ((candidates (paired-tally-candidates paired-tally))
-         (i (if (integer? i) i (candidate-index candidates i)))
-         (j (if (integer? j) j (candidate-index candidates j)))
-         (i-j (+ (* i (vector-length candidates)) j))
-         (j-i (+ (* j (vector-length candidates)) i))
-         (vec (paired-tally-pairwise paired-tally)))
-    (paired-tally-count-set! paired-tally
-                             (+ (paired-tally-count paired-tally)
-                                i-count j-count))
-    (vector-set! vec i-j (+ i-count (vector-ref vec i-j)))
-    (vector-set! vec j-i (+ j-count (vector-ref vec j-i)))))
 
 (define (union/eq a b)
   (cond ((null? a) b)
@@ -114,52 +180,8 @@
         (list->vector (reverse res))
         (lp (cdr ls) (join-candidates (cdar ls) res)))))
 
-(define (normalize-vote vote candidates)
-  (map (lambda (x)
-         (map (lambda (y) (candidate-index candidates y))
-              x))
-       vote))
-
-(define (tally! paired-tally vote)
-  (let* ((candidates (paired-tally-candidates paired-tally))
-         (vote (normalize-vote (cdr vote) candidates))
-         (used (list-sort < (concatenate vote)))
-         (num-candidates (vector-length candidates)))
-    (let lp ((ls vote))
-      (cond
-       ((null? ls)
-        (let lp ((i 0) (ls used))
-          (when (< i num-candidates)
-            (cond
-             ((and (pair? ls) (= i (car ls)))
-              ;; i was used, keep going
-              (lp (+ i 1) (cdr ls)))
-             (else
-              ;; record a vote of each used candidate over i
-              (for-each
-               (lambda (j) (paired-tally-inc! paired-tally j i 1 0))
-               used)
-              (lp (+ i 1) ls))))))
-       (else
-        (for-each
-         (lambda (j)
-           (for-each
-            (lambda (i-ls)
-              (for-each (lambda (i) (paired-tally-inc! paired-tally j i 1 0))
-                        i-ls))
-            (cdr ls)))
-         (car ls))
-        (lp (cdr ls)))))))
-
-(define (tally-votes votes . o)
-  (let* ((candidates (if (pair? o) (car o) (extract-candidates votes)))
-         (num-candidates (vector-length candidates))
-         (paired-tally (make-paired-tally candidates (length votes))))
-    (for-each (lambda (vote) (tally! paired-tally vote)) votes)
-    paired-tally))
-
-(define (paired-tally->pairs paired-tally)
-  (let* ((candidates (paired-tally-candidates paired-tally))
+(define (tally->pairs tally)
+  (let* ((candidates (tally-candidates tally))
          (num-candidates (vector-length candidates)))
     (do ((i 0 (+ i 1))
          (ls '()
@@ -167,34 +189,36 @@
                   (ls ls
                       `(((,(vector-ref candidates i)
                           . ,(vector-ref candidates j))
-                         . ,(paired-tally-ref paired-tally i j))
+                         . ,(tally-pairwise-ref tally i j))
                         ((,(vector-ref candidates j)
                           . ,(vector-ref candidates i))
-                         . ,(paired-tally-ref paired-tally j i))
+                         . ,(tally-pairwise-ref tally j i))
                         ,@ls)))
                  ((>= j num-candidates) ls))))
         ((= i num-candidates) ls))))
 
-(define (pairs->paired-tally pairs . o)
-  ;; the default over-counts
+(define (pairs->tally pairs . o)
   (let* ((count (if (pair? o)
                     (car o)
                     (fold (lambda (pair sum) (+ (cdr pair) sum)) 0 pairs)))
          (candidates (list->vector
                       (delete-duplicates (append (map caar pairs)
                                                  (map cdar pairs)))))
-         (paired-tally (make-paired-tally candidates count)))
+         (num-candidates (vector-length candidates))
+         (tally (make-paired-tally candidates count))
+         (pairwise (tally-pairwise tally)))
     (for-each
      (lambda (pair)
-       (paired-tally-inc! paired-tally (caar pair) (cdar pair) (cdr pair) 0))
+       (let ((index (tally-pairwise-index tally (caar pair) (cdar pair))))
+         (vector-inc! pairwise index (cdr pair))))
      pairs)
-    paired-tally))
+    tally))
 
 (define (pair-score pair pairs)
   (cond ((assoc pair pairs) => cdr) (else 0)))
 
 (define (sort-pairs x)
-  (let ((pairs (if (paired-tally? x) (paired-tally->pairs x) x)))
+  (let ((pairs (if (tally? x) (tally->pairs x) x)))
     (list-sort
      (lambda (a b)
        (or (> (cdr a) (cdr b))
@@ -275,18 +299,8 @@
           (scan-deps (cdr deps) seen (cons (car deps) res)))))))))
 
 (define (tideman-rank x)
-  (let ((paired-tally (if (paired-tally? x) x (tally-votes x))))
-    (topological-sort (lock-pairs (map car (sort-pairs paired-tally))))))
-
-(define (votes->distinct-tally votes)
-  (let ((res (make-distinct-tally (extract-candidates votes))))
-    (for-each (lambda (x) (distinct-tally-inc! res (cdr x))) votes)
-    res))
-
-(define (assq-inc! ls key count)
-  (cond ((assq key ls)
-         => (lambda (cell) (set-cdr! cell (+ (cdr cell) count)) ls))
-        (else (cons (cons key count) ls))))
+  (let ((tally (if (tally? x) x (votes->paired-tally x))))
+    (topological-sort (lock-pairs (map car (sort-pairs tally))))))
 
 (define (first-pref-counts ls)
   (let lp ((ls ls) (counts '()))
@@ -325,8 +339,8 @@
     (hash-table->alist counts)))
 
 (define (instant-runoff-rank x)
-  (let* ((distinct-tally (if (distinct-tally? x) x (votes->distinct-tally x)))
-         (ls (distinct-tally->alist distinct-tally)))
+  (let* ((tally (if (tally? x) x (votes->distinct-tally x)))
+         (ls (tally->distinct-alist tally)))
     (let lp ((ls ls)
              (result '()))
       (if (and (pair? ls)
@@ -341,12 +355,12 @@
                       (cons candidate result)))))))))
 
 (define (plurality-rank x)
-  (let* ((distinct-tally (if (distinct-tally? x) x (votes->distinct-tally x)))
-         (candidates (distinct-tally-candidates distinct-tally))
-         (first-count (distinct-tally-first-count distinct-tally)))
+  (let* ((tally (if (tally? x) x (votes->tally x)))
+         (candidates (tally-candidates tally))
+         (first-counts (tally-first-counts tally)))
     (map car
          (list-sort (lambda (a b) (> (cdr a) (cdr b)))
                     (map (lambda (i)
                            (cons (vector-ref candidates i)
-                                 (vector-ref first-count i)))
+                                 (vector-ref first-counts i)))
                          (iota (vector-length candidates)))))))
