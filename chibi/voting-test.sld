@@ -11,12 +11,29 @@
                      (charlie (C) (A) (B) (D))
                      (dave (D) (A) (B) (C))
                      )))
-        (test '(((C . D) . 3) ((B . D) . 3) ((B . C) . 3) ((A . B) . 3)
-                ((A . D) . 2) ((D . A) . 2) ((A . C) . 2) ((C . A) . 2)
-                ((D . C) . 1) ((D . B) . 1) ((C . B) . 1) ((B . A) . 1))
+        (test '(((B . D) . 3) ((B . C) . 3) ((C . D) . 3) ((A . B) . 3)
+                ((A . D) . 2) ((A . C) . 2) ((C . A) . 2) ((D . A) . 2)
+                ((B . A) . 1) ((C . B) . 1) ((D . C) . 1) ((D . B) . 1))
             (sort-pairs (votes->paired-tally votes)))
         (test  '(A B C D) (tideman-rank votes))
         (test  '(A C D B) (instant-runoff-rank votes)))
+      (let ((votes '((eva-lu-ator
+                      (ben-bitdiddle)
+                      (alyssa-p-hacker)
+                      (louis-reasoner)
+                      (lem-e-tweakit)
+                      (gerald-sussman)
+                      (guy-steele))
+                     (cy-d-fect
+                      (alyssa-p-hacker)
+                      (louis-reasoner)
+                      (ben-bitdiddle)
+                      (lem-e-tweakit)
+                      (gerald-sussman)
+                      (guy-steele)))))
+        (test '(alyssa-p-hacker ben-bitdiddle louis-reasoner
+                lem-e-tweakit gerald-sussman guy-steele)
+            (tideman-rank votes)))
       ;; rank from pre-tallied pairwise outcomes
       (let ((tally
              (pairs->tally

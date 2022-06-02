@@ -23,6 +23,12 @@
 ;;> various other criteria desirable in motivating people to vote
 ;;> honestly and without strategy for their actual preferences.
 ;;> Recommended for most use cases.
+;;>
+;;> Note when their are only two or a few voters it is not so uncommon
+;;> for a tie to occur when sorting pairs by size of their majority.
+;;> For these cases we provide a tie breaker.  We compare the total
+;;> number of wins against all other candidates for each winning
+;;> candidate in the pairs.
 (define (tideman-rank x)
   (let ((tally (if (tally? x) x (votes->paired-tally x))))
     (topological-sort (lock-pairs (map car (sort-pairs tally))))))
@@ -316,16 +322,32 @@
 (define (pair-score pair pairs)
   (cond ((assoc pair pairs) => cdr) (else 0)))
 
+(define (candidate-pairwise-wins a pairs)
+  (let* ((left (filter (lambda (x) (eq? a (caar x))) pairs))
+         (right (filter (lambda (x) (eq? a (cdar x))) pairs))
+         (total1 (fold + 0 (map cdr left)))
+         (total2 (fold + 0 (map cdr right)))
+         (avg (/ (+ total1 total2) (+ (length left) (length right)))))
+    (count (lambda (x) (and (eq? a (caar x)) (> (cdr x) avg))) pairs)))
+
 (define (sort-pairs x)
   (let ((pairs (if (tally? x) (tally->pairs x) x)))
     (list-sort
      (lambda (a b)
        (or (> (cdr a) (cdr b))
-           ;; tie breaker
            (and (= (cdr a) (cdr b))
-                (let ((a^-1 (pair-score (cons (cdar a) (caar a)) pairs))
-                      (b^-1 (pair-score (cons (cdar b) (caar b)) pairs)))
-                  (< a^-1 b^-1)))))
+                ;; tie breaker 1: check the total number of wins
+                (let ((a-wins (candidate-pairwise-wins (caar a) pairs))
+                      (b-wins (candidate-pairwise-wins (caar b) pairs)))
+                  (or (> a-wins b-wins)
+                      (and (= a-wins b-wins)
+                           ;; tie breaker 2: check if the score for
+                           ;; the inverse of the pair is smaller
+                           (let ((a^-1 (pair-score (cons (cdar a) (caar a))
+                                                   pairs))
+                                 (b^-1 (pair-score (cons (cdar b) (caar b))
+                                                   pairs)))
+                             (< a^-1 b^-1))))))))
      pairs)))
 
 (define (insert-edge a b graph)
