@@ -60,18 +60,18 @@
       ;; Comparison of methods.
       (let ((tally
              (distinct-alist->tally
-              '((((A) (B)) . 36)
-                (((B) (A)) . 10)
-                (((B) (C)) . 20)
-                (((C) (B)) . 34)))))
+              '(((("A") ("B")) . 36)
+                ((("B") ("A")) . 10)
+                ((("B") ("C")) . 20)
+                ((("C") ("B")) . 34)))))
         ;; Using only first choices gives preference to A.
-        (test '(A C B)
+        (test '("A" "C" "B")
             (plurality-rank tally))
         ;; With IRV, B is eliminated first with only 30 votes,
         ;; then C beats A with 54 to 46 votes.
-        (test '(C A B)
+        (test '("C" "A" "B")
             (instant-runoff-rank tally))
         ;; Ranked pairs prefers B which is never in 3rd place.
-        (test '(B C A)
+        (test '("B" "C" "A")
             (tideman-rank tally)))
       (test-end))))

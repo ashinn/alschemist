@@ -4,7 +4,7 @@
 ;;> voting implementations, with batch and incremental tallying.
 ;;>
 ;;> In this library, a \scheme{candidate} is a non-numeric object
-;;> compared via \scheme{eq?} such as a symbol and a \scheme{tally} is
+;;> compared via \scheme{equal?} such as a string, and a \scheme{tally} is
 ;;> an object aggregating \var{votes}.  A single \scheme{vote} is a
 ;;> list of lists of candidates in order of preference.  The inner
 ;;> lists may have multiple elements to represent an equal preference
@@ -104,7 +104,7 @@
       (if (or (inexact? x) (negative? x))
           (error "candidate should be a symbol or natural number" x)
           x)
-      (or (vector-index (lambda (y) (eq? x y))
+      (or (vector-index (lambda (y) (equal? x y))
                         (if (tally? candidates)
                             (tally-candidates candidates)
                             candidates))
@@ -263,16 +263,16 @@
     (for-each (lambda (x) (tally-inc! res (car x) (cdr x))) ls)
     res))
 
-(define (union/eq a b)
+(define (union a b)
   (cond ((null? a) b)
-        ((memq (car a) b) (union/eq (cdr a) b))
-        (else (union/eq (cdr a) (cons (car a) b)))))
+        ((member (car a) b) (union (cdr a) b))
+        (else (union (cdr a) (cons (car a) b)))))
 
 (define (join-candidates ranked res)
   (let lp ((ls ranked) (res res))
     (cond ((null? ls) res)
-          ((symbol? (car ls)) (lp (cdr ls) (union/eq (list (car ls)) res)))
-          (else (lp (cdr ls) (union/eq (car ls) res))))))
+          ((symbol? (car ls)) (lp (cdr ls) (union (list (car ls)) res)))
+          (else (lp (cdr ls) (union (car ls) res))))))
 
 (define (extract-candidates votes)
   (let lp ((ls votes) (res '()))
@@ -323,12 +323,12 @@
   (cond ((assoc pair pairs) => cdr) (else 0)))
 
 (define (candidate-pairwise-wins a pairs)
-  (let* ((left (filter (lambda (x) (eq? a (caar x))) pairs))
-         (right (filter (lambda (x) (eq? a (cdar x))) pairs))
+  (let* ((left (filter (lambda (x) (equal? a (caar x))) pairs))
+         (right (filter (lambda (x) (equal? a (cdar x))) pairs))
          (total1 (fold + 0 (map cdr left)))
          (total2 (fold + 0 (map cdr right)))
          (avg (/ (+ total1 total2) (+ (length left) (length right)))))
-    (count (lambda (x) (and (eq? a (caar x)) (> (cdr x) avg))) pairs)))
+    (count (lambda (x) (and (equal? a (caar x)) (> (cdr x) avg))) pairs)))
 
 (define (sort-pairs x)
   (let ((pairs (if (tally? x) (tally->pairs x) x)))
@@ -419,27 +419,15 @@
          (else
           (scan-deps (cdr deps) seen (cons (car deps) res)))))))))
 
-(define (assq-inc! ls key count)
-  (cond ((assq key ls)
-         => (lambda (cell) (set-cdr! cell (+ (cdr cell) count)) ls))
-        (else (cons (cons key count) ls))))
-
 (define (first-pref-counts ls)
-  '(let lp ((ls ls) (counts '()))
-    (if (null? ls)
-        counts
-        (lp (cdr ls)
-            (fold
-             (lambda (candidate counts)
-               (assq-inc! counts candidate (cdar ls)))
-             counts
-             (car (caar ls))))))
   (let ((candidates
          (reverse
           (delete-duplicates
            (concatenate (map (lambda (x) (concatenate (car x))) ls))))))
     (map (lambda (c)
-           (cons c (fold + 0 (map cdr (filter (lambda (x) (memq c (caar x))) ls)))))
+           (cons c (fold + 0 (map cdr
+                                  (filter (lambda (x) (member c (caar x)))
+                                          ls)))))
          candidates)))
 
 (define (min-candidate counts)
