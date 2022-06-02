@@ -16,7 +16,10 @@
                 ((B . A) . 1) ((C . B) . 1) ((D . C) . 1) ((D . B) . 1))
             (sort-pairs (votes->paired-tally votes)))
         (test  '(A B C D) (tideman-rank votes))
-        (test  '(A C D B) (instant-runoff-rank votes)))
+        ;; Since initially each candidate is first pref of one voter,
+        ;; the first candidate eliminated (and thus overall result) is
+        ;; actually random.
+        (test  '(A C B D) (instant-runoff-rank votes)))
       (let ((votes '((eva-lu-ator
                       (ben-bitdiddle)
                       (alyssa-p-hacker)
@@ -33,7 +36,10 @@
                       (guy-steele)))))
         (test '(alyssa-p-hacker ben-bitdiddle louis-reasoner
                 lem-e-tweakit gerald-sussman guy-steele)
-            (tideman-rank votes)))
+            (tideman-rank votes))
+        (test '(alyssa-p-hacker ben-bitdiddle louis-reasoner
+                lem-e-tweakit gerald-sussman guy-steele)
+            (instant-runoff-rank votes)))
       ;; rank from pre-tallied pairwise outcomes
       (let ((tally
              (pairs->tally

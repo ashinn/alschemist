@@ -425,7 +425,7 @@
         (else (cons (cons key count) ls))))
 
 (define (first-pref-counts ls)
-  (let lp ((ls ls) (counts '()))
+  '(let lp ((ls ls) (counts '()))
     (if (null? ls)
         counts
         (lp (cdr ls)
@@ -433,7 +433,14 @@
              (lambda (candidate counts)
                (assq-inc! counts candidate (cdar ls)))
              counts
-             (car (caar ls)))))))
+             (car (caar ls))))))
+  (let ((candidates
+         (reverse
+          (delete-duplicates
+           (concatenate (map (lambda (x) (concatenate (car x))) ls))))))
+    (map (lambda (c)
+           (cons c (fold + 0 (map cdr (filter (lambda (x) (memq c (caar x))) ls)))))
+         candidates)))
 
 (define (min-candidate counts)
   (let lp ((ls (cdr counts))
