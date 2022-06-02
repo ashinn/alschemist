@@ -56,7 +56,9 @@
                 ((knoxville . nashville) . 32)
                 ((knoxville . chattanooga) . 17)))))
         (test '(nashville chattanooga knoxville memphis)
-            (tideman-rank tally)))
+            (tideman-rank tally))
+        (test "digraph votes {\n  chattanooga -> knoxville [label=\"83\"]\n  nashville -> knoxville [label=\"68\"]\n  nashville -> chattanooga [label=\"68\"]\n  nashville -> memphis [label=\"58\"]\n  chattanooga -> memphis [label=\"58\"]\n  knoxville -> memphis [label=\"58\"]\n}\n"
+            (pairs->dot tally)))
       ;; Comparison of methods.
       (let ((tally
              (distinct-alist->tally

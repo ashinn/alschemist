@@ -31,7 +31,7 @@
 ;;> candidate in the pairs.
 (define (tideman-rank x)
   (let ((tally (if (tally? x) x (votes->paired-tally x))))
-    (topological-sort (lock-pairs (map car (sort-pairs tally))))))
+    (topological-sort (lock-pairs (sort-pairs tally)))))
 
 ;;> Aka "first-past-the-post" voting, returns a list of candidates
 ;;> ordered by their frequency as the first place vote.  This is the
@@ -384,10 +384,10 @@
     (cond
      ((null? ls)
       graph)
-     ((graph-reachable? (caar ls) (cdar ls) graph)
+     ((graph-reachable? (car (caar ls)) (cdr (caar ls)) graph)
       (lp (cdr ls) graph))
      (else
-      (lp (cdr ls) (insert-edge (caar ls) (cdar ls) graph))))))
+      (lp (cdr ls) (insert-edge (car (caar ls)) (cdr (caar ls)) graph))))))
 
 (define (topological-sort graph)
   (let visit ((ls graph) (seen '()) (res '()) (return (lambda (seen res) res)))
@@ -418,6 +418,34 @@
                         (scan-deps (cdr deps) seen res)))))
          (else
           (scan-deps (cdr deps) seen (cons (car deps) res)))))))))
+
+;;> Returns the Graphviz dotfile source to render a graph
+;;> representation of a Tideman (aka ranked pairs) election.  \var{x}
+;;> should be either a tally or an alist of pairs with counts,
+;;> i.e. \scheme{((candidate1 . candidate2) . count)}.
+;;>
+;;> You can convert this e.g. to a png file with:
+;;> \code{dot -Tpng vote.dot > vote.png}.
+(define (pairs->dot x)
+  (let ((pairs (if (tally? x) (sort-pairs x) x))
+        (out (open-output-string)))
+    (write-string "digraph votes {\n" out)
+    (let lp ((ls pairs) (graph '()))
+      (cond
+       ((null? ls))
+       ((graph-reachable? (car (caar ls)) (cdr (caar ls)) graph)
+        (lp (cdr ls) graph))
+       (else
+        (write-string "  " out)
+        (write (car (caar ls)) out)
+        (write-string " -> " out)
+        (write (cdr (caar ls)) out)
+        (write-string " [label=\"" out)
+        (write (cdar ls) out)
+        (write-string "\"]\n" out)
+        (lp (cdr ls) (insert-edge (car (caar ls)) (cdr (caar ls)) graph)))))
+    (write-string "}\n" out)
+    (get-output-string out)))
 
 (define (first-pref-counts ls)
   (let ((candidates
