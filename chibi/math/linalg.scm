@@ -26,10 +26,10 @@
 ;;> have the same dimension, and all domains must have the same width
 ;;> for each dimension except \var{axis}.
 (define (array-append axis a . o)
-  (assert (exact-integer? axis)
-          (array? a)
-          (< -1 axis (array-dimension a))
-          (every array? o))
+  (assert (and (exact-integer? axis)
+               (array? a)
+               (< -1 axis (array-dimension a))
+               (every array? o)))
   (let ((a-domain (array-domain a)))
     (assert (every (lambda (b)
                      (dimensions-compatible? a-domain (array-domain b) axis))
@@ -75,11 +75,11 @@
 ;;> domain.  The result will be one dimension larger, and \var{axis}
 ;;> must fit within that dimension.
 (define (array-stack axis a . o)
-  (assert (exact-integer? axis)
-          (array? a)
-          (< -1 axis (array-dimension a))
-          (every array? o)
-          (every (lambda (b) (interval= (array-domain a) (array-domain b))) o))
+  (assert (and (exact-integer? axis)
+               (array? a)
+               (< -1 axis (array-dimension a))
+               (every array? o)
+               (every (lambda (b) (interval= (array-domain a) (array-domain b))) o)))
   (let* ((a-lbs (interval-lower-bounds->list (array-domain a)))
          (a-ubs (interval-upper-bounds->list (array-domain a)))
          (domain
@@ -162,7 +162,7 @@
 ;;> Performs Gaussian elimination and returns the factor to apply to
 ;;> the determinant.
 (define (array-row-echelon! a)
-  (assert (array? a) (= (array-dimension a) 2))
+  (assert (and (array? a) (= (array-dimension a) 2)))
   (let* ((domain (array-domain a))
          (n (- (interval-upper-bound domain 0)
                (interval-lower-bound domain 0)))
@@ -203,7 +203,7 @@
                     (lp2 (+ j 1)))))))))))
 
 (define (array-solve-left-identity! a)
-  (assert (array? a) (= (array-dimension a) 2))
+  (assert (and (array? a) (= (array-dimension a) 2)))
   (array-row-echelon! a)
   (let* ((n (- (interval-upper-bound (array-domain a) 0)
                (interval-lower-bound (array-domain a) 0)))
@@ -235,7 +235,7 @@
 ;;> Returns the inverse of 2-d array \var{a}, or \code{#f} if \var{a}
 ;;> is not invertible.
 (define (array-inverse a)
-  (assert (array? a) (= (array-dimension a) 2))
+  (assert (and (array? a) (= (array-dimension a) 2)))
   (let* ((domain (array-domain a))
          (n (- (interval-upper-bound domain 0)
                (interval-lower-bound domain 0)))
@@ -262,8 +262,8 @@
 ;;> the process.
 (define (determinant! a)
    ;; TODO: add determinant for the 2x2x2 case
-  (assert (array? a)
-          (= (array-dimension a) 2))
+  (assert (and (array? a)
+               (= (array-dimension a) 2)))
   (let* ((domain (array-domain a))
          (hi0 (interval-upper-bound domain 0))
          (lo0 (interval-lower-bound domain 0))
@@ -611,7 +611,7 @@
 ;;>     'top: "-" 'middle-col: "|" 'center-row: "-")
 
 (define (pretty-print-array a . opt)
-  (assert (array? a) (>= (array-dimension a) 2))
+  (assert (and (array? a) (>= (array-dimension a) 2)))
   (let* ((p1 (if (pair? opt) (car opt) (current-output-port)))
          (p (cond ((port? p1) p1)
                   (p1 (current-output-port))
