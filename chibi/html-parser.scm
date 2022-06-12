@@ -621,6 +621,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; simple conversions
 
+;; concatenate adjacent top-level strings in ls
+(define (reverse-condensing-strings ls)
+  (let lp1 ((ls ls) (res '()))
+    (cond
+     ((null? ls) res)
+     ((null? (cdr ls)) (cons (car ls) res))
+     ((and (string? (car ls)) (string? (cadr ls)))
+      (let lp2 ((ls (cdr ls)) (strs (list (car ls))))
+        (cond
+         ((null? ls) (cons (apply string-append strs) res))
+         ((string? (car ls)) (lp2 (cdr ls) (cons (car ls) strs)))
+         (else (lp1 ls (cons (apply string-append strs) res))))))
+     (else (lp1 (cdr ls) (cons (car ls) res))))))
+
 ;;> \procedure{(html->sxml [port])}
 ;;> Returns the SXML representation of the document from \var{port},
 ;;> using the default parsing options.
@@ -630,9 +644,10 @@
          (make-html-parser
           'start: (lambda (tag attrs seed virtual?) '())
           'end:   (lambda (tag attrs parent-seed seed virtual?)
-                    `((,tag ,@(if (pair? attrs)
-                                  `((@ ,@attrs) ,@(reverse seed))
-                                  (reverse seed)))
+                    `((,tag
+                       ,@(if (pair? attrs)
+                             `((@ ,@attrs) ,@(reverse-condensing-strings seed))
+                             (reverse-condensing-strings seed)))
                       ,@parent-seed))
           'decl:    (lambda (tag attrs seed) `((*DECL* ,tag ,@attrs) ,@seed))
           'process: (lambda (attrs seed) `((*PI* ,@attrs) ,@seed))

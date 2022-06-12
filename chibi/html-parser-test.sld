@@ -72,6 +72,9 @@
 
         (test '(*TOP* (br) "\r\n" (br) "\r\n" (div (@ (data "(sxml (@ (attr \"12345\")) body)")) "div body"))
             (html->sxml "<br>\r\n<br>\r\n<div data=\"(sxml (@ (attr &quot;12345&quot;)) body)\">div body</div>"))
+
+        (test '(*TOP* (p "foo'bar\"baz"))
+            (html->sxml "<p>foo&apos;bar&quot;baz</p>")) 
         )
 
       (test-end))))
