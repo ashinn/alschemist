@@ -371,8 +371,18 @@
        (unless (zero? (second res))
          (error (port->string cmd-err)))))))
 
+(cond-expand
+ (macosx (define native-format "aqua"))
+ (else (define native-format "wxt")))
+
 (define (show-plot p)
-  (process-with-input '(gnuplot -persist -) (plot->gnuplot p)))
+  (process-with-input
+   '(gnuplot -persist -)
+   (let ((width (assq-ref 'width: (plot-attributes p) 600))
+         (height (assq-ref 'height: (plot-attributes p) 400)))
+     (string-append "set term " native-format " size "
+                    (->string width) ", " (->string height) "\n"
+                   (plot->gnuplot p)))))
 
 (define (save-plot p file)
   (process-with-input
