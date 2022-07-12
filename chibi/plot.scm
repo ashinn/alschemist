@@ -253,13 +253,20 @@
                                             1)
                                          (array-dimension data)))
                                 (else
-                                 0)))))
+                                 0))))
+              (color (assq-ref 'color: attributes)))
          (when x-a
            (write-array x-a (array-column data x-col) out))
          (write-array a (array-column data y-col) out)
          (when label-a
            (write-array label-a (array-column data label-col) out))
-         `(,@(if label-a
+         `(,@(if color
+                 `(,(if (symbol? color)
+                        (string-append "'" (symbol->string color) "'")
+                        color)
+                   " lc rgb ")
+                 '())
+           ,@(if label-a
                  (if label-skip
                      (list "[$1]:1/0)" label-a
                            "==0?" (number->string label-skip) ":xtic(int($1)%")
