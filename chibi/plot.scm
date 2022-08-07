@@ -338,6 +338,12 @@
     (when stacked?
       (write-style '(data filledcurves above x1) out))
     (cond
+     ((assq-ref 'title: (plot-attributes p))
+      => (lambda (title)
+           (write-string "set title " out)
+           (write title out)
+           (newline out))))
+    (cond
      ((assq-ref 'x-label-style: (plot-attributes p))
       => (lambda (style)
            (write-string "set xtics" out)
@@ -357,12 +363,16 @@
            (for-each
             (lambda (event)
               (let ((dt (car event))
-                    (label (cadr event)))
+                    (label (cadr event))
+                    (height (cond ((memq 'height: (cddr event)) => cadr)
+                                  (else 0.98))))
                 (write-string "set label '" out)
                 (write-string label out)
                 (write-string "' at " out)
                 (write dt out)
-                (write-string ",graph(1,0.98)\n" out)
+                (write-string ",graph(1," out)
+                (write height out)
+                (write-string ")\n" out)
                 (write-string "set arrow from " out)
                 (write dt out)
                 (write-string ",graph(0,0) to " out)
