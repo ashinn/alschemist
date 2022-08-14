@@ -263,6 +263,20 @@
 (define (temporal>=? a b)
   (temporal-cmp >= a b))
 
+(define (temporal-min a . o)
+  (let lp ((ls o) (res a))
+    (if (null? ls)
+        res
+        (lp (cdr ls)
+            (if (temporal<? (car ls) res) (car ls) res)))))
+
+(define (temporal-max a . o)
+  (let lp ((ls o) (res a))
+    (if (null? ls)
+        res
+        (lp (cdr ls)
+            (if (temporal>? (car ls) res) (car ls) res)))))
+
 ;;> Absolute ordering procedures for temporals, which need not use the
 ;;> same chronology.
 ;;/

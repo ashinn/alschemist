@@ -9,6 +9,7 @@
    ;; temporals
    temporal? temporal-ref temporal-update temporal-adjust
    temporal=? temporal<? temporal<=? temporal>? temporal>=?
+   temporal-min temporal-max
    temporal-chronology temporal-in-chronology temporal-fields
    temporal->instant chronology-instant->temporal
    temporal->list chronology-list->temporal
