@@ -1,6 +1,6 @@
 
 (define-library (chibi image base)
-  (import (scheme base) (scheme bitwise) (scheme list) (scheme write)
+  (import (scheme base) (scheme bitwise) (scheme list)
           (srfi 160 base) (srfi 179) (chibi assert))
   (export image? make-image image-array image-color-space
           image-height image-width image-channels image-alpha
