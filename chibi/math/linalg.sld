@@ -3,7 +3,7 @@
 
 (define-library (chibi math linalg)
   (import (scheme base) (scheme inexact) (scheme list) (scheme write)
-          (srfi 33) (srfi 179)
+          (srfi 33) (srfi 231)
           (chibi assert) (chibi optional))
   (export array= array-append array-stack identity-array
           array-to-origin
@@ -19,7 +19,7 @@
   (include "linalg.scm")
   (cond-expand
    ((and chibi (not no-ffi))
-    (import (srfi 160 base) (srfi 179 base))
+    (import (srfi 160 base) (srfi 231 base))
     (include-shared "blas")
     (begin
       (define (storage->zero storage)
@@ -157,7 +157,7 @@
       (define (vectorizable-array? a)
         (and (specialized-array? a)
              (or (= 1 (array-dimension a))
-                 (array-elements-in-order? a))
+                 (array-packed? a))
              (zero? (vector-ref (array-coeffs a) 0))))
       (define (array-vectorized-step a)
         (vector-ref (array-coeffs a) (- (vector-length (array-coeffs a)) 1)))

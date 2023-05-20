@@ -12,94 +12,6 @@
                             (interval-lower-bound b-domain d))))
                   (lp (- d 1)))))))
 
-(define (interval-width iv axis)
-  (- (interval-upper-bound iv axis)
-     (interval-lower-bound iv axis)))
-
-(define (interval-widths iv)
-  (vector-map -
-              (interval-upper-bounds->vector iv)
-              (interval-lower-bounds->vector iv)))
-
-;;> Returns a new specialized array which is the concatenatation of 1
-;;> or more arrays along the \var{axis} dimension.  All arrays must
-;;> have the same dimension, and all domains must have the same width
-;;> for each dimension except \var{axis}.
-(define (array-append axis a . o)
-  (assert (and (exact-integer? axis)
-               (array? a)
-               (< -1 axis (array-dimension a))
-               (every array? o)))
-  (let ((a-domain (array-domain a)))
-    (assert (every (lambda (b)
-                     (dimensions-compatible? a-domain (array-domain b) axis))
-                   o))
-    (let* ((a-lo (interval-lower-bounds->vector a-domain))
-           (c-lo (make-vector (interval-dimension a-domain) 0))
-           (c-hi (interval-widths a-domain)))
-      (vector-set! c-hi
-                   axis
-                   (fold (lambda (b sum)
-                           (+ sum (interval-width (array-domain b) axis)))
-                         (vector-ref c-hi axis)
-                         o))
-      (let* ((c-domain (make-interval c-lo c-hi))
-             (c (make-specialized-array c-domain
-                                        (or (array-storage-class a)
-                                            generic-storage-class)))
-             (b-trans (make-vector (array-dimension a) 0)))
-        (array-assign!
-         (array-extract c (make-interval c-lo (interval-widths a-domain)))
-         (array-translate a (vector-map - a-lo)))
-        (let lp ((arrays o)
-                 (b-offset (- (interval-upper-bound a-domain axis)
-                              (interval-lower-bound a-domain axis))))
-          (if (null? arrays)
-              c
-              (let* ((b (car arrays))
-                     (b-domain (array-domain b))
-                     (b-offset2 (+ b-offset (interval-width b-domain axis)))
-                     (b-lo (make-vector (interval-dimension b-domain) 0))
-                     (b-hi (interval-widths b-domain)))
-                (vector-set! b-lo axis b-offset)
-                (vector-set! b-hi axis b-offset2)
-                (vector-set! b-trans axis (- b-offset))
-                (let ((view (array-translate
-                             (array-extract c (make-interval b-lo b-hi))
-                             b-trans)))
-                  (array-assign! view b)
-                  (lp (cdr arrays) b-offset2)))))))))
-
-;;> Returns a new specialized array which is the joining of 1 or more
-;;> arrays along a new \var{axis}.  All arrays must have the same
-;;> domain.  The result will be one dimension larger, and \var{axis}
-;;> must fit within that dimension.
-(define (array-stack axis a . o)
-  (assert (and (exact-integer? axis)
-               (array? a)
-               (< -1 axis (array-dimension a))
-               (every array? o)
-               (every (lambda (b) (interval= (array-domain a) (array-domain b))) o)))
-  (let* ((a-lbs (interval-lower-bounds->list (array-domain a)))
-         (a-ubs (interval-upper-bounds->list (array-domain a)))
-         (domain
-          (make-interval
-           `#(,@(take a-lbs axis) 0 ,@(drop a-lbs axis))
-           `#(,@(take a-ubs axis) ,(+ 1 (length o)) ,@(drop a-ubs axis))))
-         (res (make-specialized-array domain
-                                      (or (array-storage-class a)
-                                          generic-storage-class)))
-         (perm `#(,axis ,@(delete axis (iota (+ 1 (array-dimension a))))))
-         (permed (if (zero? axis) res (array-permute res perm)))
-         (curried (array-curry permed 1))
-         (get-view (array-getter curried)))
-    (let lp ((ls (cons a o)) (i 0))
-      (cond
-       ((null? ls) res)
-       (else
-        (array-assign! (get-view i) (car ls))
-        (lp (cdr ls) (+ i 1)))))))
-
 ;;> Translates \var{array} so that it's lower bounds are all zero.
 (define (array-to-origin array)
   (array-translate
@@ -244,7 +156,7 @@
     ;; can only compute inverses of square matrices
     (assert (= n m))
     (let* ((id (identity-array n (array-storage-class a)))
-           (tmp (array-append 1 a id)))
+           (tmp (array-append 1 (list a id))))
       (array-solve-left-identity! tmp)
       (and (= 1 (array-ref tmp
                            (- (interval-upper-bound domain 0) 1)
@@ -505,12 +417,12 @@
 ;;> Returns the sum of all elements in array \var{a}.  Not a norm
 ;;> because it can yield negative results.
 (define (array-sum a)
-  (array-fold + 0 a))
+  (array-foldl + 0 a))
 
 ;;> Returns the sum of the absolute values of all elements in array
 ;;> \var{a}.  Aka the L1-norm, taxicab norm, or Manhattan norm.
 (define (array-1norm a)
-  (array-fold (lambda (x acc) (+ (abs x) acc)) 0 a))
+  (array-foldl (lambda (x acc) (+ (abs x) acc)) 0 a))
 
 ;;> Returns the sum of the square of all elements in array \var{a}.
 ;;> Aka the L2-norm, Euclidean norm, Frobenius norm or square norm.
@@ -521,12 +433,12 @@
 ;;> \var{a} raised to the \var{p} power.  Aka the p-norm, this is the
 ;;> generalized form of the above.
 (define (array-norm a p)
-  (expt (array-fold (lambda (x acc) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
+  (expt (array-foldl (lambda (x acc) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
 
 ;;> Returns the maximum absolute value of all elements in array
 ;;> \var{a}.  Aka the max norm or infinity norm.
 (define (array-inf-norm a)
-  (array-fold (lambda (x acc) (max (abs x) acc)) 0 a))
+  (array-foldl (lambda (x acc) (max (abs x) acc)) 0 a))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; convolutions
