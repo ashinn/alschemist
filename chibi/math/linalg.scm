@@ -411,6 +411,26 @@
     (array-for-each (lambda (x y) (set! sum (+ sum (* x y)))) a b)
     sum))
 
+(define (array-map-elements! proc a)
+  (let ((a-getter (array-getter a))
+        (a-setter (array-setter a)))
+    (interval-for-each
+     (case (array-dimension a)
+       ((1)
+        (lambda (i) (a-setter (proc (a-getter i)) i)))
+       ((2)
+        (lambda (i j) (a-setter (proc (a-getter i j)) i j)))
+       (else
+        (lambda multi-index
+          (apply a-setter
+                 (proc (apply a-getter multi-index))
+                 multi-index))))
+     (array-domain a))
+    a))
+
+(define (array-exp-elements! a) (array-map-elements! exp a))
+(define (array-log-elements! a) (array-map-elements! log a))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; norms
 

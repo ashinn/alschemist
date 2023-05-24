@@ -12,6 +12,8 @@
           array-div-left array-div-right
           array-add-elements! array-sub-elements!
           array-mul-elements! array-div-elements!
+          array-map-elements!
+          array-exp-elements! array-log-elements!
           array-dot array-convolve
           array-sum array-1norm array-2norm
           array-inf-norm array-norm

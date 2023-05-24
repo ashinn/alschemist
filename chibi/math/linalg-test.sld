@@ -111,6 +111,13 @@
         (test-array (tensor '((0. 3.) (6. 9.))) (values A))
         (array-div-elements! A 2.)
         (test-array (tensor '((0. 1.5) (3. 4.5))) (values A)))
+      (let ((A (tensor '((0. 2.) (3. 4.)) f32-storage-class)))
+        (array-exp-elements! A)
+        (test '((1.0 7.389056205749512)
+                (20.08553695678711 54.598148345947266))
+            (array->list* A))
+        (array-log-elements! A)
+        (test '((0. 2.) (3. 4.)) (array->list* A)))
       (test 30.
           (array-dot (tensor '(1. 2. 3. 4.))
                      (tensor '(1. 2. 3. 4.))))
