@@ -63,7 +63,7 @@
         (parameterize ((current-test-epsilon 0.1))
           (test 0.5 (mean sample))
           (test (/ 12.) (variance sample))))
-      (let* ((p (poisson-distribution 4 5))
+      (let* ((p (poisson-distribution 4))
              (sample (random-multi-sample 2000 p)))
         (test 2000 (vector-length sample))
         (parameterize ((current-test-epsilon 0.1))

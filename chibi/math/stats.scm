@@ -525,11 +525,9 @@
 ;;> Returns a new poisson distribution, a discrete distribution
 ;;> measuring the probability that a certain number of events occur
 ;;> within a certain period of time.
-(define (poisson-distribution lam k . o)
+(define (poisson-distribution lam . o)
   (when (<= lam 0)
     (error "poisson distribution lambda must be positive" lam))
-  (unless (and (exact-integer? k) (positive? k))
-    (error "poisson distribution k must be a natural number" k))
   (let* ((mean lam)
          (median (+ lam 1/3 (- (/ 0.02 lam))))
          (mode (- (ceiling lam) 1))
@@ -540,15 +538,15 @@
          (random-real (random-source-make-reals random-source)))
     (pure-discrete-distribution
      'poisson
-     (lambda (x)
+     (lambda (k)
        (/ (* (expt lam k) (exp (- lam))) (factorial k)))
-     (lambda (x)
+     (lambda (k)
        (* (exp (- lam))
           (do ((i 0 (+ i 1))
                (fact 1 (* fact (+ i 1)))
                (sum 0 (+ sum (/ (expt lam i) fact))))
               ((> i k) sum))))
-     (make-statistics #f mean median mode variance skew kurtosis 0 k)
+     (make-statistics #f mean median mode variance skew kurtosis 0 1)
      (lambda ()
        (let ((limit (exp (- lam))))  ;; TODO: faster randoms
          (do ((k 0 (+ k 1))
