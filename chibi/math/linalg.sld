@@ -10,10 +10,14 @@
           array-inverse determinant
           array-mul array-mul! array-expt
           array-div-left array-div-right
+          array-add-elements array-sub-elements
+          array-mul-elements array-div-elements
           array-add-elements! array-sub-elements!
           array-mul-elements! array-div-elements!
-          array-map-elements!
-          array-exp-elements! array-log-elements!
+          array-map-elements array-map-elements!
+          array-exp-elements array-exp-elements!
+          array-log-elements array-log-elements!
+          array-expt-elements array-square-elements
           array-dot array-convolve
           array-sum array-1norm array-2norm
           array-inf-norm array-norm
@@ -112,7 +116,7 @@
                (K (interval-upper-bound (array-domain a) 1))
                (lda (vector-ref (array-coeffs a) 1))
                (ldb (vector-ref (array-coeffs b) 1))
-               (ldc M))
+               (ldc (vector-ref (array-coeffs c) 1)))
           (assert (= K (interval-upper-bound (array-domain b) 0)))
           ((storage->gemm (array-storage-class a))
            CblasRowMajor CblasNoTrans CblasNoTrans

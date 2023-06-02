@@ -354,6 +354,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; element-wise operations
 
+;; TODO: More general broadcasting than just array vs scalar.
 (define-syntax define-array-elements-op
   (syntax-rules ()
     ((define-array-elements-op name op)
@@ -404,6 +405,11 @@
 (define-array-elements-op general-array-mul-elements! *)
 (define-array-elements-op general-array-div-elements! /)
 
+(define (array-add-elements a . o) (apply array-add-elements! (array-copy a) o))
+(define (array-sub-elements a . o) (apply array-sub-elements! (array-copy a) o))
+(define (array-mul-elements a . o) (apply array-mul-elements! (array-copy a) o))
+(define (array-div-elements a . o) (apply array-div-elements! (array-copy a) o))
+
 (define (general-array-dot a b)
   (assert (and (array? a) (array? b)))
   (assert (= (array-dimension a) (array-dimension b)))
@@ -428,8 +434,18 @@
      (array-domain a))
     a))
 
+(define (array-map-elements proc a)
+  (array-map proc a))
+
+(define (array-exp-elements a) (array-map-elements exp a))
 (define (array-exp-elements! a) (array-map-elements! exp a))
+(define (array-log-elements a) (array-map-elements log a))
 (define (array-log-elements! a) (array-map-elements! log a))
+
+(define (array-expt-elements a x)
+  (array-map-elements (lambda (y) (expt y x)) x))
+(define (array-square-elements a)
+  (array-expt-elements a 2))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; norms
