@@ -242,7 +242,7 @@
          (p (vector-ref b-hi 1))
          (b-off (- (vector-ref b-lo 1) (vector-ref a-lo 1)))
          (off0 (- (vector-ref a-lo 0)))
-         (off1 (- (vector-ref a-lo 1)))
+         (off1 (- (vector-ref b-lo 0)))
          (res (make-specialized-array
                (make-interval (vector (- n (vector-ref a-lo 0))
                                       (- p (vector-ref b-lo 0))))
@@ -354,7 +354,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; element-wise operations
 
-;; TODO: More general broadcasting than just array vs scalar.
 (define-syntax define-array-elements-op
   (syntax-rules ()
     ((define-array-elements-op name op)
@@ -363,8 +362,8 @@
        (let lp ((ls o))
          (cond
           ((null? ls) a)
-          ((array? (car ls))
-           (assert (interval= (array-domain a) (array-domain (car ls))))
+          ((and (array? (car ls))
+                (interval= (array-domain a) (array-domain (car ls))))
            (let ((a-getter (array-getter a))
                  (a-setter (array-setter a))
                  (b-getter (array-getter (car ls))))
@@ -382,6 +381,8 @@
                           multi-index))))
               (array-domain a))
              (lp (cdr ls))))
+          ((array? (car ls))
+           (error "broadcasting unimplemented"))
           (else
            (assert (number? (car ls)))
            (let ((a-getter (array-getter a))
@@ -674,5 +675,5 @@
           (else
            (array-for-each
             (lambda (sub) (print2d sub) (newline p))
-            (array-curry a (- rank 2)))))
+            (array-curry a (- rank 1)))))
         (if (not p1) (get-output-string p))))))
