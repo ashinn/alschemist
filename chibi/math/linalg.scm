@@ -454,12 +454,12 @@
 ;;> Returns the sum of all elements in array \var{a}.  Not a norm
 ;;> because it can yield negative results.
 (define (array-sum a)
-  (array-foldl + 0 a))
+  (array-fold-left + 0 a))
 
 ;;> Returns the sum of the absolute values of all elements in array
 ;;> \var{a}.  Aka the L1-norm, taxicab norm, or Manhattan norm.
 (define (array-1norm a)
-  (array-foldl (lambda (x acc) (+ (abs x) acc)) 0 a))
+  (array-fold-left (lambda (acc x) (+ (abs x) acc)) 0 a))
 
 ;;> Returns the sum of the square of all elements in array \var{a}.
 ;;> Aka the L2-norm, Euclidean norm, Frobenius norm or square norm.
@@ -470,12 +470,12 @@
 ;;> \var{a} raised to the \var{p} power.  Aka the p-norm, this is the
 ;;> generalized form of the above.
 (define (array-norm a p)
-  (expt (array-foldl (lambda (x acc) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
+  (expt (array-fold-left (lambda (acc x) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
 
 ;;> Returns the maximum absolute value of all elements in array
 ;;> \var{a}.  Aka the max norm or infinity norm.
 (define (array-inf-norm a)
-  (array-foldl (lambda (x acc) (max (abs x) acc)) 0 a))
+  (array-fold-left (lambda (acc x) (max (abs x) acc)) 0 a))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; convolutions
