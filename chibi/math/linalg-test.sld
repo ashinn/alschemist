@@ -156,6 +156,34 @@
       (test 2.236068 (array-2norm (tensor '(1 2))))
       (test 2 (array-inf-norm (tensor '(1 2))))
       (test (expt 9. 1/3) (array-norm (tensor '(1 2)) 3))
+      (test '((0 1) (2 3))
+          (map array->list*
+               (array->list* (array-rows (tensor '((0 1) (2 3)))))))
+      (test '((0 2) (1 3))
+          (map array->list*
+               (array->list* (array-columns (tensor '((0 1) (2 3)))))))
+      (test '(0 3)
+          (array->list* (array-diag (tensor '((0 1) (2 3))))))
+      (test '(1 5)
+          (array->list* (array-sum-rows (tensor '((0 1) (2 3))))))
+      (test '((0 1) (2/5 3/5))
+          (array->list* (array-normalize-rows (tensor '((0 1) (2 3))))))
+      (test '((0. 1.) (.25 .75))
+          (array->list*
+           (array-normalize-rows
+            (tensor '((0. 1.) (1. 3.)) f32-storage-class))))
+      (test '(1 3 8)
+          (array->list*
+           (array-select-columns (tensor '((0 1 2) (3 4 5) (6 7 8)))
+                                 '(1 0 2))))
+      (let ((columns '(1 0 2)))
+        (test '((0 1 0) (3 0 0) (0 0 8))
+            (array->list*
+             (array-unselect-columns
+              (array-select-columns
+               (tensor '((0 1 2) (3 4 5) (6 7 8)) s32-storage-class)
+               columns)
+              columns))))
       (test "  0 10\n200  3\n"
           (pretty-print-array (tensor '((0 10) (200 3))) #f))
       (test "[0 1]\n[2 3]\n"

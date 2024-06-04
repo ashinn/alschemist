@@ -6,7 +6,7 @@
           (srfi 33) (srfi 231)
           (chibi assert) (chibi optional))
   (export array= array-append array-stack identity-array
-          array-to-origin
+          array-to-origin array-transpose
           array-inverse determinant
           array-mul array-mul! array-expt
           array-div-left array-div-right
@@ -20,7 +20,10 @@
           array-expt-elements array-square-elements
           array-dot array-convolve
           array-sum array-1norm array-2norm
-          array-inf-norm array-norm
+          array-inf-norm array-norm array-max
+          array-mean array-rows array-columns
+          array-select-columns array-unselect-columns
+          array-diag array-sum-rows array-normalize-rows
           pretty-print-array)
   (include "linalg.scm")
   (cond-expand

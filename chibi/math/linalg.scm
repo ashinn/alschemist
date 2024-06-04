@@ -477,6 +477,71 @@
 (define (array-inf-norm a)
   (array-fold-left (lambda (acc x) (max (abs x) acc)) 0 a))
 
+(define array-max array-inf-norm)
+
+(define (array-mean a)
+  (/ (array-sum a) (interval-volume (array-domain a))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Utilities
+
+;;> Returns an array of the rows of a as 1-dimensional arrays.
+(define (array-rows a)
+  (array-curry a 1))
+
+;;> Returns an array of the columns of a as 1-dimensional arrays.
+(define (array-columns a)
+  (array-curry (array-transpose a) 1))
+
+;;> Returns an array of just the selected column indexes of a per row.
+;;> Equivalent to pytorch: a[torch.arange(num), indexes]
+(define (array-select-columns a indexes . o)
+  (let ((storage (if (pair? o)
+                     (car o)
+                     (or (array-storage-class a) generic-storage-class))))
+    (list*->array
+     1
+     (map (lambda (i j) (array-ref a i j))
+          (iota (length indexes))
+          indexes)
+     storage)))
+
+;;> The inverse of array-select-columns.  Selects only the given
+;;> columns indexes per row, setting all other columns to 0.
+(define (array-unselect-columns a indexes . o)
+  (let* ((n (interval-width (array-domain a) 0))
+         (storage (if (pair? o)
+                      (car o)
+                      (or (array-storage-class a) generic-storage-class)))
+         (res (make-specialized-array (make-interval (vector n n)) storage)))
+    (for-each
+     (lambda (i j)
+       (array-set! res (array-ref a j) j i))
+     (iota n)
+     indexes)
+    res))
+
+;;> Returns a 1-dimensional array of the diagonal elements of a.
+(define (array-diag a)
+  (let ((get-a (array-getter a)))
+    (make-array (make-interval (vector (interval-width (array-domain a) 0)))
+                (lambda (i) (get-a i i)))))
+
+;;> Returns an array of the sum of each row of a.
+(define (array-sum-rows a)
+  (let ((rows (array-rows a)))
+    (array-map (lambda (row) (array-sum row)) rows)))
+
+;;> Divide elements of each row by their sum.
+;;> Equivalent to the pytorch: a / a.sum(dim=1, keepdim=True)
+(define (array-normalize-rows a)
+  (let ((rows (array-rows a)))
+    (array-stack
+     0
+     (array->list
+      (array-map (lambda (row) (array-div-elements row (array-sum row)))
+                 rows)))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; convolutions
 
