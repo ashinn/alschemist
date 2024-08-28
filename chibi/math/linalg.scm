@@ -354,62 +354,277 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; element-wise operations
 
-(define-syntax define-array-elements-op
+(define (list-set ls i v)
+  (let ((res (list-copy ls)))
+    (list-set! res i v)
+    res))
+
+;;> "Broadcasts" the array to the new-domain, repeating single-width
+;;> dimensions as needed.  Follows the numpy conventions -
+;;> conceptually the domains are right aligned, with the array domain
+;;> being wrapped in sufficient single-width outer dimensions to match
+;;> the new-domain dimensions.  Then every dimension width is
+;;> compared: if they are the same width they are aligned accordingly,
+;;> otherwise if the array dimension width is 1, it's values are
+;;> repeated for every value of the new-domain width.  Throws an error
+;;> if neither of these cases apply.
+(define (array-broadcast array new-domain)
+  (cond
+   ((not (array? array))
+    (array-broadcast (list*->array 1 (list array)) new-domain))
+   ((equal? (array-domain array) new-domain)
+    array)
+   (else
+    (let* ((domain (array-domain array))
+           (array-dim (interval-dimension domain))
+           (new-dim (interval-dimension new-domain))
+           (drop-dims (- new-dim array-dim)))
+      (assert (not (negative? drop-dims)))
+      (let lp ((d 1)
+               (update (lambda ls ls)))
+        (cond
+         ((> d array-dim)
+          (specialized-array-share
+           (if (specialized-array? array) array (array-copy array))
+           new-domain
+           (lambda multi-index
+             (apply values (apply update (drop multi-index drop-dims))))))
+         (else
+          (let* ((a-dim (- array-dim d))
+                 (n-dim (- new-dim d))
+                 (lb (interval-lower-bound domain a-dim)))
+            (cond
+             ((= (interval-width domain a-dim)
+                 (interval-width new-domain n-dim))
+              (if (= (interval-lower-bound domain a-dim)
+                     (interval-lower-bound new-domain n-dim))
+                  (lp (+ d 1) update)
+                  ;; translate
+                  (let ((offset (- (interval-lower-bound new-domain n-dim) lb)))
+                    (lp (+ d 1)
+                        (lambda multi-index
+                          (let ((res (apply update multi-index)))
+                            (write `(list-inc ,res ,a-dim ,offset)) (newline)
+                            (list-set res a-dim (+ (list-ref res a-dim) offset))
+                            ))))))
+             ((= 1 (interval-width domain a-dim))
+              ;; broadcast
+              (lp (+ d 1)
+                  (lambda multi-index
+                    (list-set (apply update multi-index) a-dim lb))))
+             (else
+              (error "can't broadcast array to domain at dimension"
+                     array new-domain a-dim)))))))))))
+
+;; Defines an elementwise array operation of two arguments,
+;; arrays a and b, which applies op to all of the corresponding
+;; elements, (op a_i a_j), and stores the result in a, broadcasting
+;; where needed.  fast-path is attempted first, and the result of
+;; that is used instead if not #f.
+;; Note because the result is stored in a, a must already be of the
+;; appropriate size, i.e. we only broadcast b dimensions into a, not
+;; vice versa.
+(define-syntax define-array-elementwise-binary-op
   (syntax-rules ()
-    ((define-array-elements-op name op)
-     (define (name a . o)
+    ((define-array-elementwise-binary-op name op fast-path)
+     (define (name a b)
        (assert (mutable-array? a))
-       (let lp ((ls o))
-         (cond
-          ((null? ls) a)
-          ((and (array? (car ls))
-                (interval= (array-domain a) (array-domain (car ls))))
-           (let ((a-getter (array-getter a))
-                 (a-setter (array-setter a))
-                 (b-getter (array-getter (car ls))))
-             (interval-for-each
-              (case (array-dimension a)
-                ((1)
-                 (lambda (i) (a-setter (op (a-getter i) (b-getter i)) i)))
-                ((2)
-                 (lambda (i j) (a-setter (op (a-getter i j) (b-getter i j)) i j)))
-                (else
-                 (lambda multi-index
-                   (apply a-setter
-                          (op (apply a-getter multi-index)
-                              (apply b-getter multi-index))
-                          multi-index))))
-              (array-domain a))
-             (lp (cdr ls))))
-          ((array? (car ls))
-           (error "broadcasting unimplemented"))
-          (else
-           (assert (number? (car ls)))
-           (let ((a-getter (array-getter a))
-                 (a-setter (array-setter a)))
-             (interval-for-each
-              (case (array-dimension a)
-                ((1)
-                 (lambda (i) (a-setter (op (a-getter i) (car ls)) i)))
-                ((2)
-                 (lambda (i j) (a-setter (op (a-getter i j) (car ls)) i j)))
-                (else
-                 (lambda multi-index
-                   (apply a-setter
-                          (op (apply a-getter multi-index) (car ls))
-                          multi-index))))
-              (array-domain a))
-             (lp (cdr ls))))))))))
+       (let ((b (array-broadcast b (array-domain a))))
+         (or (fast-path a b)
+             (let ((a-getter (array-getter a))
+                   (a-setter (array-setter a))
+                   (b-getter (array-getter b)))
+               (case (interval-dimension (array-domain a))
+                 ((0)
+                  (array-set a (op (array-get a) (array-get b)))
+                  a)
+                 ((1)
+                  (interval-for-each
+                   (lambda (i)
+                     (a-setter (op (a-getter i) (b-getter i)) i))
+                   (array-domain a))
+                  a)
+                 ((2)
+                  (interval-for-each
+                   (lambda (i j)
+                     (a-setter (op (a-getter i j) (b-getter i j)) i j))
+                   (array-domain a))
+                  a)
+                 ((3)
+                  (interval-for-each
+                   (lambda (i j k)
+                     (a-setter (op (a-getter i j k) (b-getter i j k)) i j k))
+                   (array-domain a))
+                  a)
+                 (else
+                  (interval-for-each
+                   (lambda multi-index
+                     (apply a-setter
+                            (op (apply a-getter multi-index)
+                                (apply b-getter multi-index))
+                            multi-index))
+                   (array-domain a))
+                  a)))))))))
 
-(define-array-elements-op general-array-add-elements! +)
-(define-array-elements-op general-array-sub-elements! -)
-(define-array-elements-op general-array-mul-elements! *)
-(define-array-elements-op general-array-div-elements! /)
+(define-array-elementwise-binary-op array+! + fast-array+!)
+(define-array-elementwise-binary-op array-! - fast-array-!)
+(define-array-elementwise-binary-op array*! * fast-array*!)
+(define-array-elementwise-binary-op array/! / fast-array/!)
 
-(define (array-add-elements a . o) (apply array-add-elements! (array-copy a) o))
-(define (array-sub-elements a . o) (apply array-sub-elements! (array-copy a) o))
-(define (array-mul-elements a . o) (apply array-mul-elements! (array-copy a) o))
-(define (array-div-elements a . o) (apply array-div-elements! (array-copy a) o))
+;;> Elementwise in-place array operations.  Applies the operator to
+;;> each corresponding element of both arrays, and stores the result
+;;> in the first array.  Broadcasts the second array (which can be a
+;;> scalar) as needed.
+;;/
+
+;; Functional arithmetic operations.  Need utilities to generate the
+;; destination array.
+
+(define (fit-broadcast-domain a b)
+  (let ((a-len (vector-length a))
+        (b-len (vector-length b)))
+    (let lp ((i 0) (res (vector-copy a)))
+      (define (fit m n)
+        (cond ((= m n) m)
+              ((= m 1) n)
+              ((= n 1) m)
+              (else (error "domains can't be broadcast" a b i))))
+      (cond
+       ((>= i a-len)
+        (if (>= i b-len)
+            res
+            (vector-append (vector-copy b 0 (- b-len i)) res)))
+       ((>= i b-len)
+        res)
+       (else
+        (vector-set! res
+                     (- a-len i 1)
+                     (fit (vector-ref res (- a-len i 1))
+                          (vector-ref b (- b-len i 1))))
+        (lp (+ i 1) res))))))
+
+(define (list-of-arrays->broadcast-domain arrays)
+  (let lp ((ls arrays)
+           (shape (vector)))
+    (cond
+     ((null? ls)
+      (make-interval shape))
+     ((not (array? (car ls)))
+      (lp (cdr ls) shape))
+     (else
+      (lp (cdr ls)
+          (fit-broadcast-domain shape
+                                (interval-widths (array-domain (car ls)))))))))
+
+(define storage-class-widths
+  `((,u1-storage-class . 1)
+    (,u8-storage-class . 8)
+    (,u16-storage-class . 16)
+    (,u32-storage-class . 32)
+    (,u64-storage-class . 64)
+    (,s8-storage-class . 108)
+    (,s16-storage-class . 116)
+    (,s32-storage-class . 132)
+    (,s64-storage-class . 164)
+    (,f8-storage-class . 208)
+    (,f16-storage-class . 216)
+    (,f32-storage-class . 232)
+    (,f64-storage-class . 264)
+    (,c64-storage-class . 332)
+    (,c128-storage-class . 364)
+    ))
+
+(define (scalar-storage-class z)
+  (cond ((exact-integer? z) s64-storage-class)
+        ((real? z) f32-storage-class)
+        ((complex? z) c64-storage-class)
+        (else generic-storage-class)))
+
+;; Chooses the smallest storage class capable of holding the elements
+;; of both storage classes s1 and s2.
+(define (storage-class-fit s1 s2)
+  (if (eq? s1 s2)
+      s1
+      (let ((s1c (assq s1 storage-class-widths))
+            (s2c (assq s2 storage-class-widths)))
+        (if (and s1c s2c)
+            (let-values
+                (((s1 s2 s1w s2w)
+                  (if (> (cdr s2c) (cdr s1c))
+                      (values s2 s1 (cdr s2c) (cdr s1c))
+                      (values s1 s2 (cdr s1c) (cdr s2c)))))
+              (cond
+               ((> s1w 300)
+                (if (eq? s2 f64-storage-class)
+                    c128-storage-class
+                    s1))
+               ((> s1w 200)
+                (if (or (eq? s2 u64-storage-class) (eq? s2 s64-storage-class))
+                    f64-storage-class
+                    s1))
+               ((> s1w 100)
+                (if (>= s2w (- s1w 100))
+                    (if (eq? s1 s64-storage-class)
+                        generic-storage-class
+                        s64-storage-class)
+                    s1))
+               (else s1)))
+            generic-storage-class))))
+
+;; Chooses a storage class capable of holding the elements of all of
+;; the arrays.
+(define (widest-storage-class arrays)
+  (cond
+   ((null? arrays) generic-storage-class)
+   ((and (array? (car arrays)) (not (specialized-array? (car arrays))))
+    generic-storage-class)
+   (else
+    (let lp ((ls (cdr arrays))
+             (storage (array-storage-class (car arrays))))
+      (cond
+       ((null? ls) storage)
+       ((not (array? (car ls)))
+        (lp (cdr ls)
+            (storage-class-fit storage (scalar-storage-class (car ls)))))
+       ((not (specialized-array? (car ls))) generic-storage-class)
+       (else
+        (let ((storage (storage-class-fit storage
+                                          (array-storage-class (car ls)))))
+          (if (eq? storage generic-storage-class)
+              storage
+              (lp (cdr ls) storage)))))))))
+
+(define (list-of-arrays->broadcast-dest arrays)
+  (let ((domain (list-of-arrays->broadcast-domain arrays))
+        (storage (widest-storage-class arrays)))
+    (make-specialized-array domain
+                            storage
+                            (or (storage-class-default storage) 0))))
+
+;; First generate a zero array capable of holding the result, add in
+;; the first array then apply the op on the remaining arrays.
+
+(define (array+ . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (for-each (lambda (array) (array+! dest array)) arrays)
+    dest))
+(define (array- . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (array+! dest (car arrays))
+    (for-each (lambda (array) (array-! dest array)) (cdr arrays))
+    dest))
+(define (array* . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (array+! dest (car arrays))
+    (for-each (lambda (array) (array*! dest array)) (cdr arrays))
+    dest))
+(define (array/ . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (array+! dest (car arrays))
+    (for-each (lambda (array) (array/! dest array)) (cdr arrays))
+    dest))
+
+;; General mapping.
 
 (define (general-array-dot a b)
   (assert (and (array? a) (array? b)))
@@ -487,11 +702,11 @@
 
 ;;> Returns an array of the rows of a as 1-dimensional arrays.
 (define (array-rows a)
-  (array-curry a 1))
+  (array-curry a (- (array-dimension a) 1)))
 
 ;;> Returns an array of the columns of a as 1-dimensional arrays.
 (define (array-columns a)
-  (array-curry (array-transpose a) 1))
+  (array-rows (array-transpose a)))
 
 ;;> Returns an array of just the selected column indexes of a per row.
 ;;> Equivalent to pytorch: a[torch.arange(num), indexes]
@@ -528,9 +743,18 @@
                 (lambda (i) (get-a i i)))))
 
 ;;> Returns an array of the sum of each row of a.
-(define (array-sum-rows a)
-  (let ((rows (array-rows a)))
-    (array-map (lambda (row) (array-sum row)) rows)))
+(define (array-sum-rows a . o)
+  (let ((keep-dim? (and (pair? o) (car o)))
+        (res (array-map (lambda (row) (array-sum row))
+                        (array-rows a))))
+    (array-copy
+     (if keep-dim?
+         (let ((domain (make-interval
+                        (vector-append
+                         (vector (interval-width (array-domain a) 0))
+                         (make-vector (- (array-dimension a) 1) 1)))))
+           (make-array domain (lambda (i . rest) (array-ref res i))))
+         res))))
 
 ;;> Divide elements of each row by their sum.
 ;;> Equivalent to the pytorch: a / a.sum(dim=1, keepdim=True)
@@ -539,7 +763,7 @@
     (array-stack
      0
      (array->list
-      (array-map (lambda (row) (array-div-elements row (array-sum row)))
+      (array-map (lambda (row) (array/ row (array-sum row)))
                  rows)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

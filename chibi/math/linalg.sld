@@ -6,14 +6,21 @@
           (srfi 33) (srfi 231)
           (chibi assert) (chibi optional))
   (export array= array-append array-stack identity-array
-          array-to-origin array-transpose
+          array-to-origin array-transpose array-broadcast
           array-inverse determinant
           array-mul array-mul! array-expt
           array-div-left array-div-right
-          array-add-elements array-sub-elements
-          array-mul-elements array-div-elements
-          array-add-elements! array-sub-elements!
-          array-mul-elements! array-div-elements!
+          array+ array+! array- array-!
+          array* array*! array/ array/!
+          ;; old names for backwards compatibility
+          (rename array* array-mul-elements)
+          (rename array/ array-div-elements)
+          (rename array+ array-add-elements)
+          (rename array- array-sub-elements)
+          (rename array*! array-mul-elements!)
+          (rename array/! array-div-elements!)
+          (rename array+! array-add-elements!)
+          (rename array-! array-sub-elements!)
           array-map-elements array-map-elements!
           array-exp-elements array-exp-elements!
           array-log-elements array-log-elements!
@@ -170,7 +177,7 @@
              (zero? (vector-ref (array-coeffs a) 0))))
       (define (array-vectorized-step a)
         (vector-ref (array-coeffs a) (- (vector-length (array-coeffs a)) 1)))
-      (define (array-inc-elements! fallback get-info a . o)
+      (define (fast-array-inc! a b get-info)
         (cond
          ((and (vectorizable-array? a)
                (get-info (array-storage-class a)))
@@ -181,69 +188,57 @@
                   (unit-vec (car (cddr info)))
                   (volume (interval-volume (array-domain a)))
                   (a-step (array-vectorized-step a)))
-              (let lp ((ls o))
-                (cond ((null? ls) a)
-                      ((array? (car ls))
-                       (if (and (vectorizable-array? (car ls))
-                                (eq? (array-storage-class (car ls))
-                                     (array-storage-class a)))
-                           ;; a = unit*b + a
-                           (axpy volume unit
-                                 (array-body (car ls))
-                                 (array-vectorized-step (car ls))
-                                 (array-body a)
-                                 a-step)
-                           (fallback a (car ls)))
-                       (lp (cdr ls)))
-                      (else
-                       ;; a = b*unit + a
-                       (axpy volume (car ls) unit-vec 0 (array-body a) a-step)
-                       (lp (cdr ls))))))))
+              (cond ((not (array? b))
+                     ;; a = b*unit + a
+                     (axpy volume (inexact b) unit-vec 0 (array-body a) a-step)
+                     a)
+                    ((and (vectorizable-array? b)
+                          (eq? (array-storage-class a)
+                               (array-storage-class b))
+                          ;; TODO: broadcasting in blas
+                          (equal? (array-domain a)
+                                  (array-domain b)))
+                     ;; a = unit*b + a
+                     (axpy volume unit
+                           (array-body b)
+                           (array-vectorized-step b)
+                           (array-body a)
+                           a-step)
+                     a)
+                    (else
+                     #f)))))
          (else
-          (apply fallback a o))))
-      (define (array-add-elements! a . o)
-        (apply array-inc-elements! general-array-add-elements!
-               storage->add-info a o))
-      (define (array-sub-elements! a . o)
-        (apply array-inc-elements! general-array-sub-elements!
-               storage->sub-info a o))
-      (define (array-mul-elements! a . o)
+          #f)))
+      (define (fast-array+! a b)
+        (fast-array-inc! a b storage->add-info))
+      (define (fast-array-! a b)
+        (fast-array-inc! a b storage->sub-info))
+      (define (fast-array*! a b)
         (cond
          ((and (vectorizable-array? a)
+               (not (array? b))
                (storage->scal (array-storage-class a)))
           =>
           (lambda (scal)
             (let ((volume (interval-volume (array-domain a)))
                   (a-step (array-vectorized-step a)))
-              (let lp ((ls o))
-                (cond ((null? ls) a)
-                      ((array? (car ls))
-                       (general-array-mul-elements! a (car ls))
-                       (lp (cdr ls)))
-                      (else
-                       (scal volume (car ls) (array-body a) a-step)
-                       (lp (cdr ls))))))))
+              (scal volume (inexact b) (array-body a) a-step)
+              a)))
          (else
-          (apply general-array-mul-elements! a o))))
-      (define (array-div-elements! a . o)
+          #f)))
+      (define (fast-array/! a b)
         (cond
          ((and (vectorizable-array? a)
+               (not (array? b))
                (storage->scal (array-storage-class a)))
           =>
           (lambda (scal)
             (let ((volume (interval-volume (array-domain a)))
                   (a-step (array-vectorized-step a)))
-              (let lp ((ls o))
-                (cond ((null? ls) a)
-                      ((array? (car ls))
-                       (general-array-div-elements! a (car ls))
-                       (lp (cdr ls)))
-                      (else
-                       (scal volume (/ (inexact (car ls)))
-                             (array-body a) a-step)
-                       (lp (cdr ls))))))))
+              (scal volume (/ (inexact b)) (array-body a) a-step)
+              a)))
          (else
-          (apply general-array-div-elements! a o))))
+          #f)))
       (define (array-dot a b)
         (cond
          ((and (vectorizable-array? a)
@@ -263,9 +258,9 @@
         (let ((alpha (if (pair? o) (car o) 1))
               (beta (if (and (pair? o) (pair? (cdr o))) (cadr o) 0)))
           (general-array-mul! alpha a b beta c)))
-      (define array-add-elements! general-array-add-elements!)
-      (define array-sub-elements! general-array-sub-elements!)
-      (define array-mul-elements! general-array-mul-elements!)
-      (define array-div-elements! general-array-div-elements!)
+      (define (fast-array+! a b) #f)
+      (define (fast-array-! a b) #f)
+      (define (fast-array*! a b) #f)
+      (define (fast-array/! a b) #f)
       (define array-dot general-array-dot)
       ))))
