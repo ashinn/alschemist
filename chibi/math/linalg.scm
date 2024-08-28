@@ -580,7 +580,10 @@
     generic-storage-class)
    (else
     (let lp ((ls (cdr arrays))
-             (storage (array-storage-class (car arrays))))
+             (storage ((if (array? (car arrays))
+                           array-storage-class
+                           scalar-storage-class)
+                       (car arrays))))
       (cond
        ((null? ls) storage)
        ((not (array? (car ls)))
