@@ -38,30 +38,34 @@
      ((zero? col)
       (array-append
        1
-       ;; new col
-       vals
-       ;; right of col
-       (array-extract array
-                      (make-interval (vector 0 (+ col 1))
-                                     (vector num-rows num-cols)))))
+       (list
+        ;; new col
+        vals
+        ;; right of col
+        (array-extract array
+                       (make-interval (vector 0 (+ col 1))
+                                      (vector num-rows num-cols))))))
      ((= (+ col 1) num-cols)
       (array-append
        1
-       ;; left of col
-       (array-extract array (make-interval (vector num-rows col)))
-       ;; new col
-       vals))
+       (list
+        ;; left of col
+        (array-extract array (make-interval (vector num-rows col)))
+        ;; new col
+        vals)))
      (else
       (array-append
        1
-       ;; left of col
-       (array-extract array (make-interval (vector num-rows col)))
-       ;; new col
-       vals
-       ;; right of col
-       (array-extract array
-                      (make-interval (vector 0 (+ col 1))
-                                     (vector num-rows num-cols))))))))
+       (list
+        ;; left of col
+        (array-extract array (make-interval (vector num-rows col)))
+        ;; new col
+        vals
+        ;; right of col
+        (array-extract array
+                       (make-interval (vector 0 (+ col 1))
+                                      (vector num-rows num-cols))))
+       )))))
 
 (define (plot-element-values pe)
   (let ((data (plot-element-data pe))
@@ -106,8 +110,8 @@
     '(-1 . 1))  ;; TODO: base on the function
    ((array? (plot-element-data pe))
     (let ((values (plot-element-values pe)))
-      (cons (array-fold min +inf.0 values)
-            (array-fold max -inf.0 values))))
+      (cons (array-fold-left min +inf.0 values)
+            (array-fold-left max -inf.0 values))))
    (else
     (cons (minimum (if (plot-element? pe) (plot-element-data pe) pe))
           (maximum (if (plot-element? pe) (plot-element-data pe) pe))))))
