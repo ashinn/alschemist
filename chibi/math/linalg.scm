@@ -404,7 +404,6 @@
                     (lp (+ d 1)
                         (lambda multi-index
                           (let ((res (apply update multi-index)))
-                            (write `(list-inc ,res ,a-dim ,offset)) (newline)
                             (list-set res a-dim (+ (list-ref res a-dim) offset))
                             ))))))
              ((= 1 (interval-width domain a-dim))
