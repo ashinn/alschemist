@@ -371,7 +371,7 @@
 (define (array-broadcast array new-domain)
   (cond
    ((not (array? array))
-    (array-broadcast (list*->array 1 (list array)) new-domain))
+    (array-broadcast (list*->array 0 array) new-domain))
    ((equal? (array-domain array) new-domain)
     array)
    (else
@@ -435,7 +435,7 @@
                    (b-getter (array-getter b)))
                (case (interval-dimension (array-domain a))
                  ((0)
-                  (array-set a (op (array-get a) (array-get b)))
+                  (array-set! a (op (array-ref a) (array-ref b)))
                   a)
                  ((1)
                   (interval-for-each
@@ -606,25 +606,30 @@
 ;; First generate a zero array capable of holding the result, add in
 ;; the first array then apply the op on the remaining arrays.
 
+(define (unwrap-trivial-from-scalars x arrays)
+  (if (and (zero? (array-dimension x)) (not (any array? arrays)))
+      (array-ref x)
+      x))
+
 (define (array+ . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
     (for-each (lambda (array) (array+! dest array)) arrays)
-    dest))
+    (unwrap-trivial-from-scalars dest arrays)))
 (define (array- . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
     (array+! dest (car arrays))
     (for-each (lambda (array) (array-! dest array)) (cdr arrays))
-    dest))
+    (unwrap-trivial-from-scalars dest arrays)))
 (define (array* . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
     (array+! dest (car arrays))
     (for-each (lambda (array) (array*! dest array)) (cdr arrays))
-    dest))
+    (unwrap-trivial-from-scalars dest arrays)))
 (define (array/ . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
     (array+! dest (car arrays))
     (for-each (lambda (array) (array/! dest array)) (cdr arrays))
-    dest))
+    (unwrap-trivial-from-scalars dest arrays)))
 
 ;; General mapping.
 
