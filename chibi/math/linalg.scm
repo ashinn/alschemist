@@ -331,7 +331,7 @@
               (array-mul2 (mul i split) (mul (+ split 1) j)))))))))
 
 ;;> Returns \var{a} multiplied by itself \var{pow} times.
-(define (array-expt a pow)
+(define (array-mul-expt a pow)
   (let loop ((a a) (n pow))
     (case n
       ((0) (identity-array (array-dimension a)))
@@ -469,6 +469,9 @@
 (define-array-elementwise-binary-op array-! - fast-array-!)
 (define-array-elementwise-binary-op array*! * fast-array*!)
 (define-array-elementwise-binary-op array/! / fast-array/!)
+
+(define-array-elementwise-binary-op array-min! min (lambda (a b) #f))
+(define-array-elementwise-binary-op array-max! max (lambda (a b) #f))
 
 ;;> Elementwise in-place array operations.  Applies the operator to
 ;;> each corresponding element of both arrays, and stores the result
@@ -617,8 +620,12 @@
     (unwrap-trivial-from-scalars dest arrays)))
 (define (array- . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
-    (array+! dest (car arrays))
-    (for-each (lambda (array) (array-! dest array)) (cdr arrays))
+    (cond
+     ((and (pair? arrays) (null? (cdr arrays)))
+      (array-! dest (car arrays)))
+     (else
+      (array+! dest (car arrays))
+      (for-each (lambda (array) (array-! dest array)) (cdr arrays))))
     (unwrap-trivial-from-scalars dest arrays)))
 (define (array* . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
@@ -627,9 +634,28 @@
     (unwrap-trivial-from-scalars dest arrays)))
 (define (array/ . arrays)
   (let ((dest (list-of-arrays->broadcast-dest arrays)))
-    (array+! dest (car arrays))
-    (for-each (lambda (array) (array/! dest array)) (cdr arrays))
+    (cond
+     ((and (pair? arrays) (null? (cdr arrays)))
+      (array+! dest 1.0)
+      (array/! dest (car arrays)))
+     (else
+      (array+! dest (car arrays))
+      (for-each (lambda (array) (array/! dest array)) (cdr arrays))))
     (unwrap-trivial-from-scalars dest arrays)))
+
+(define (array-min . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (array+! dest (car arrays))
+    (for-each (lambda (array) (array-min! dest array)) (cdr arrays))
+    (unwrap-trivial-from-scalars dest arrays)))
+(define (array-max . arrays)
+  (let ((dest (list-of-arrays->broadcast-dest arrays)))
+    (array+! dest (car arrays))
+    (for-each (lambda (array) (array-max! dest array)) (cdr arrays))
+    (unwrap-trivial-from-scalars dest arrays)))
+
+(define (array-relu array)
+  (array-max 0 array))
 
 ;; General mapping.
 
@@ -660,15 +686,19 @@
 (define (array-map-elements proc a)
   (array-map proc a))
 
-(define (array-exp-elements a) (array-map-elements exp a))
-(define (array-exp-elements! a) (array-map-elements! exp a))
-(define (array-log-elements a) (array-map-elements log a))
-(define (array-log-elements! a) (array-map-elements! log a))
+(define (array-exp a) (array-map-elements exp a))
+(define (array-exp! a) (array-map-elements! exp a))
+(define (array-log a) (array-map-elements log a))
+(define (array-log! a) (array-map-elements! log a))
 
-(define (array-expt-elements a x)
+(define (array-expt a x)
   (array-map-elements (lambda (y) (expt y x)) x))
-(define (array-square-elements a)
-  (array-expt-elements a 2))
+(define (array-expt! a x)
+  (array-map-elements! (lambda (y) (expt y x)) x))
+(define (array-square a)
+  (array-expt a 2))
+(define (array-square! a)
+  (array-expt! a 2))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; norms
@@ -699,7 +729,7 @@
 (define (array-inf-norm a)
   (array-fold-left (lambda (acc x) (max (abs x) acc)) 0 a))
 
-(define array-max array-inf-norm)
+(define array-max-norm array-inf-norm)
 
 (define (array-mean a)
   (/ (array-sum a) (interval-volume (array-domain a))))

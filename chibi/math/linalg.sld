@@ -8,30 +8,30 @@
   (export array= array-append array-stack identity-array
           array-to-origin array-transpose array-broadcast
           array-inverse determinant
-          array-mul array-mul! array-expt
+          array-mul array-mul! array-mul-expt
           array-div-left array-div-right
           array+ array+! array- array-!
           array* array*! array/ array/!
-          ;; old names for backwards compatibility
-          (rename array* array-mul-elements)
+          array-map-elements array-map-elements!
+          array-exp array-exp! array-log array-log!
+          array-expt array-expt! array-square array-square!
+          array-min! array-max! array-min array-max
+          array-relu array-dot array-convolve
+          array-sum array-1norm array-2norm
+          array-inf-norm array-norm array-max-norm
+          array-mean array-rows array-columns
+          array-select-columns array-unselect-columns
+          array-diag array-sum-rows array-normalize-rows
+          pretty-print-array)
+  ;; old names for backwards compatibility
+  (export (rename array* array-mul-elements)
           (rename array/ array-div-elements)
           (rename array+ array-add-elements)
           (rename array- array-sub-elements)
           (rename array*! array-mul-elements!)
           (rename array/! array-div-elements!)
           (rename array+! array-add-elements!)
-          (rename array-! array-sub-elements!)
-          array-map-elements array-map-elements!
-          array-exp-elements array-exp-elements!
-          array-log-elements array-log-elements!
-          array-expt-elements array-square-elements
-          array-dot array-convolve
-          array-sum array-1norm array-2norm
-          array-inf-norm array-norm array-max
-          array-mean array-rows array-columns
-          array-select-columns array-unselect-columns
-          array-diag array-sum-rows array-normalize-rows
-          pretty-print-array)
+          (rename array-! array-sub-elements!))
   (include "linalg.scm")
   (cond-expand
    ((and chibi (not no-ffi))
