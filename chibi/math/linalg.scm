@@ -415,6 +415,25 @@
               (error "can't broadcast array to domain at dimension"
                      array new-domain a-dim)))))))))))
 
+(define (array-squeeze a . o)
+  (let ((pred (if (pair? o)
+                  (cond
+                   ((procedure? (car o)) (car o))
+                   ((integer? (car o)) (lambda (i) (= i (car o))))
+                   (else (lambda (i) (memv i (car o)))))
+                  (lambda (i) #t))))
+    (call-with-values
+        (lambda ()
+          (let ((interval (array-domain a)))
+            (partition (lambda (k)
+                         (and (pred k) (eqv? (interval-width interval k) 1)))
+                       (iota (array-dimension a)))))
+      (lambda (ones rest)
+        (car (array->list
+              (array-curry
+               (array-permute a (list->vector (append ones rest)))
+               (length rest))))))))
+
 ;; Defines an elementwise array operation of two arguments,
 ;; arrays a and b, which applies op to all of the corresponding
 ;; elements, (op a_i a_j), and stores the result in a, broadcasting
@@ -779,19 +798,25 @@
     (make-array (make-interval (vector (interval-width (array-domain a) 0)))
                 (lambda (i) (get-a i i)))))
 
+;;> Returns an array of the sum of each element of an axis of a,
+;;> defaulting to the last.
+(define (array-sum-axis a . o)
+  (let* ((axis (if (pair? o) (car o) (- (array-dimension a) 1)))
+         (widths (interval-widths (array-domain a)))
+         (storage (if (specialized-array? a)
+                      (array-storage-class a)
+                      generic-storage-class)))
+    (vector-set! widths axis 1)
+    (array-mul a
+               (make-specialized-array (make-interval widths) storage 1))))
+
+;;> Sums the axis and squeezes out the resulting sum axis.
+(define (array-sum-axis/squeeze a . o)
+  (let ((axis (if (pair? o) (car o) (- (array-dimension a) 1))))
+    (array-squeeze (array-sum-axis a axis) axis)))
+
 ;;> Returns an array of the sum of each row of a.
-(define (array-sum-rows a . o)
-  (let ((keep-dim? (and (pair? o) (car o)))
-        (res (array-map (lambda (row) (array-sum row))
-                        (array-rows a))))
-    (array-copy
-     (if keep-dim?
-         (let ((domain (make-interval
-                        (vector-append
-                         (vector (interval-width (array-domain a) 0))
-                         (make-vector (- (array-dimension a) 1) 1)))))
-           (make-array domain (lambda (i . rest) (array-ref res i))))
-         res))))
+(define array-sum-rows array-sum-axis)
 
 ;;> Divide elements of each row by their sum.
 ;;> Equivalent to the pytorch: a / a.sum(dim=1, keepdim=True)

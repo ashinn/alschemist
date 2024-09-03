@@ -6,8 +6,9 @@
           (srfi 33) (srfi 231)
           (chibi assert) (chibi optional))
   (export array= array-append array-stack identity-array
-          array-to-origin array-transpose array-broadcast
+          array-to-origin array-transpose
           array-inverse determinant
+          array-broadcast array-squeeze
           array-mul array-mul! array-mul-expt
           array-div-left array-div-right
           array+ array+! array- array-!
@@ -21,7 +22,8 @@
           array-inf-norm array-norm array-max-norm
           array-mean array-rows array-columns
           array-select-columns array-unselect-columns
-          array-diag array-sum-rows array-normalize-rows
+          array-diag array-sum-axis array-sum-axis/squeeze
+          array-sum-rows array-normalize-rows
           pretty-print-array)
   ;; old names for backwards compatibility
   (export (rename array* array-mul-elements)
