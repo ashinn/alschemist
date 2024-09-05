@@ -711,9 +711,9 @@
 (define (array-log! a) (array-map-elements! log a))
 
 (define (array-expt a x)
-  (array-map-elements (lambda (y) (expt y x)) x))
+  (array-map-elements (lambda (y) (expt y x)) a))
 (define (array-expt! a x)
-  (array-map-elements! (lambda (y) (expt y x)) x))
+  (array-map-elements! (lambda (y) (expt y x)) a))
 (define (array-square a)
   (array-expt a 2))
 (define (array-square! a)
@@ -802,13 +802,20 @@
 ;;> defaulting to the last.
 (define (array-sum-axis a . o)
   (let* ((axis (if (pair? o) (car o) (- (array-dimension a) 1)))
-         (widths (interval-widths (array-domain a)))
+         (widths (let ((w (interval-widths (array-domain a))))
+                   (vector-set! w axis 1)
+                   w))
          (storage (if (specialized-array? a)
                       (array-storage-class a)
-                      generic-storage-class)))
-    (vector-set! widths axis 1)
-    (array-mul a
-               (make-specialized-array (make-interval widths) storage 1))))
+                      generic-storage-class))
+         (ones (make-specialized-array
+                (make-interval widths)
+                storage
+                (if (and (number? (storage-class-default storage))
+                         (inexact? (storage-class-default storage)))
+                    1.
+                    1))))
+    (array-mul a ones)))
 
 ;;> Sums the axis and squeezes out the resulting sum axis.
 (define (array-sum-axis/squeeze a . o)
