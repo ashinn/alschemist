@@ -24,6 +24,7 @@
           array-select-columns array-unselect-columns
           array-diag array-sum-axis array-sum-axis/squeeze
           array-sum-rows array-normalize-rows
+          array-of zeros ones
           pretty-print-array)
   ;; old names for backwards compatibility
   (export (rename array* array-mul-elements)

@@ -103,6 +103,8 @@
         (array-mul (tensor '((1.) (1.)) f32-storage-class)
                    (tensor '((0.5 0.3)) f32-storage-class)))
       (let ((C (tensor '((0. 0.) (0. 0.)) f64-storage-class)))
+        (test C (zeros C))
+        (test-array (array+ C 1) (ones C))
         (array-mul! C
                     (tensor '((1. 2.) (3. 4.)) f64-storage-class)
                     (tensor '((2. 0.) (1. 2.)) f64-storage-class))

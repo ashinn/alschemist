@@ -41,6 +41,28 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; linear algebra
 
+(define (array-of init a . o)
+  (let* ((domain (if (array? a) (array-domain a) a))
+         (storage
+          (cond ((pair? o) (car o))
+                ((and (array? a) (specialized-array? a))
+                 (array-storage-class a))
+                (else generic-storage-class)))
+         (val (+ init (or (storage-class-default storage) 0.0))))
+    (make-specialized-array domain storage val)))
+
+;;> Returns an all-zero array with the same domain as \var{a}, either
+;;> an array or an interval.  \var{storage} defaults to the storage
+;;> class of \var{a} if it's a specialized array, otherwise
+;;> generic-storage-class.
+(define (zeros a . o)
+  (apply array-of 0 a o))
+
+;;> Similar to zeros but fills the array with one, useful as the
+;;> multiplicative identify.
+(define (ones a . o)
+  (apply array-of 1 a o))
+
 ;;> Returns the 2-d identity matrix of size \var{n}.
 (define (identity-array n . o)
   (let ((res (make-specialized-array
