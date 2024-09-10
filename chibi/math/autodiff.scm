@@ -14,7 +14,14 @@
 (define (dual value . o)
   (let ((link (if (pair? o) (car o) values))
         (label (and (pair? o) (pair? (car o)) (cadr o))))
-    (make-dual value link label #f)))
+    (if (dual? value)
+        (make-dual (dual-value value)
+                   (lambda (self grads)
+                     ((dual-link value) self grads)
+                     (link self grads))
+                   label
+                   #f)
+        (make-dual value link label #f))))
 
 (define (as-dual value)
   (if (dual? value) value (dual value)))
@@ -23,6 +30,13 @@
   (make-dual value values (and (pair? o) (car o)) #t))
 
 (define (dual-value x) (if (dual? x) (%dual-value x) x))
+
+(define (array-of-dual? a)
+  (and (array? a)
+       (positive? (interval-volume (array-domain a)))
+       (let ((elt (array-first a)))
+         (or (dual? elt)
+             (array-of-dual? elt)))))
 
 (define-syntax let-duals
   (syntax-rules ()
@@ -86,10 +100,7 @@
            (else
             (lp (cdr ls) (array-sum-axis v (car ls)))))))
        (else
-        (array+ (make-specialized-array
-                 domain
-                 (array-storage-class v)
-                 (or (storage-class-default (array-storage-class v)) 0.0))
+        (array+ (zeros domain (array-storage-class v))
                 v)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -133,68 +144,65 @@
 
 ;;> \section{Operators}
 
-(define (dual+ a b)
-  (let ((a (as-dual a)) (b (as-dual b)))
-    (dual
-     (array+ (dual-value a) (dual-value b))
-     (lambda (self grads)
-       (let ((grad (gradients-ref grads self)))
-         (gradients-inc! grads a grad)
-         (gradients-inc! grads b grad))))))
+(define-syntax define-dual-op
+  (syntax-rules ()
+    ((define-dual-op (name arg ...) array-op op-name link)
+     (define (name arg ...)
+       (let ((arg (as-dual arg)) ...
+             (op-name (if (or (array-of-dual? (dual-value arg)) ...)
+                          (lambda (arg ...) (array-map name arg ...))
+                          array-op)))
+         (dual
+          (op-name (dual-value arg) ...)
+          link))))))
 
-(define (dual* a b)
-  (let ((a (as-dual a)) (b (as-dual b)))
-    (dual
-     (array* (dual-value a) (dual-value b))
-     (lambda (self grads)
-       (let ((grad (gradients-ref grads self)))
-         (gradients-inc! grads a (array* (dual-value b) grad))
-         (gradients-inc! grads b (array* (dual-value a) grad)))))))
+(define-dual-op (dual+ a b) array+ +
+  (lambda (self grads)
+    (let ((grad (gradients-ref grads self)))
+      (gradients-inc! grads a grad)
+      (gradients-inc! grads b grad))))
+
+(define-dual-op (dual* a b) array* *
+  (lambda (self grads)
+    (let ((grad (gradients-ref grads self)))
+      (gradients-inc! grads a (* (dual-value b) grad))
+      (gradients-inc! grads b (* (dual-value a) grad)))))
 
 (define (dual- a b)
   (dual+ a (dual* -1 b)))
 
-(define (dual-expt a b)
-  (assert (not (dual? b)))
-  (let* ((a (as-dual a))
-         (a-val (dual-value a))
-         (** (if (array? a-val) array-expt expt)))
-    (dual
-     (** a-val b)
-     (lambda (self grads)
-       (let* ((grad (gradients-ref grads self))
-              (delta (array* (** a-val (- b 1)) b grad)))
-         (gradients-inc! grads a delta))))))
+(define-dual-op (dual-expt a b) array-expt **
+  (let ((* (if (array-of-dual? (dual-value a)) dual* array*)))
+    ;; TODO: non-constant exponent
+    (lambda (self grads)
+      (let* ((grad (gradients-ref grads self))
+             (delta (* (** (dual-value a) (- (dual-value b) 1))
+                       (dual-value b)
+                       grad)))
+        (gradients-inc! grads a delta)))))
 
 (define (dual/ a b)
   (dual* a (dual-expt b -1)))
 
-(define (dual-exp a)
-  (let* ((a (as-dual a))
-         (a-val (dual-value a))
-         (e^ (if (array? a-val) array-exp exp)))
-    (dual (e^ a-val)
-          (lambda (self grads)
-            (let* ((grad (gradients-ref grads self))
-                   (delta (array* (e^ (dual-value a)) grad)))
-              (gradients-inc! grads a (exp grad)))))))
+(define-dual-op (dual-exp a) array-exp e^
+  (lambda (self grads)
+    (let* ((grad (gradients-ref grads self))
+           (delta (array* (e^ (dual-value a)) grad)))
+      (gradients-inc! grads a (exp grad)))))
 
-(define (dual-log a)
-  (let* ((a (as-dual a))
-         (a-val (dual-value a)))
-    (dual ((if (array? a-val) array-log log) a-val)
-          (lambda (self grads)
-            (let* ((grad (gradients-ref grads self))
-                   (delta (array* (array/ a-val) grad)))
-              (gradients-inc! grads a delta))))))
+(define-dual-op (dual-log a) array-log ln
+  (lambda (self grads)
+    (let* ((grad (gradients-ref grads self))
+           (delta (array* (array/ (dual-value a)) grad)))
+      (gradients-inc! grads a delta))))
 
-(define (tanh a)
-  (let ((e^2a ((if (array? a) array-exp exp) (array* a 2.0))))
+(define (array-tanh a)
+  (let ((e^2a (array-exp (array* a 2.0))))
     (array/ (array- e^2a 1.0) (array+ e^2a 1.0))))
 
 (define (dual-tanh a)
   (let* ((a (as-dual a))
-         (value (tanh (dual-value a))))
+         (value (array-tanh (dual-value a))))
     (dual
      value
      (lambda (self grads)
@@ -221,7 +229,9 @@
 (define (dual-sum a)
   (let ((a (as-dual a)))
     (dual
-     (array-sum (dual-value a))
+     (if (array-of-dual? (dual-value a))
+         (array-fold-left .+ 0 (dual-value a))
+         (array-sum (dual-value a)))
      (lambda (self grads)
        (let ((grad (gradients-ref grads self)))
          (gradients-inc! grads a grad))))))
@@ -235,18 +245,12 @@
                    w))
          (storage (if (specialized-array? a-val)
                       (array-storage-class a-val)
-                      generic-storage-class))
-         (one (if (and (number? (storage-class-default storage))
-                       (inexact? (storage-class-default storage)))
-                  1.
-                  1))
-         (ones (make-specialized-array (make-interval widths) storage one)))
-    (dual-matmul a ones)))
+                      generic-storage-class)))
+    (dual-matmul a (ones (make-interval widths) storage one))))
 
 (define (dual-mean a)
-  (let ((a (as-dual a)))
-    (dual/ (dual-sum a)
-           (interval-volume (array-domain (dual-value a))))))
+  (dual/ (dual-sum a)
+         (interval-volume (array-domain (dual-value a)))))
 
 (define (dual-matmul a b)
   (let ((a (as-dual a)) (b (as-dual b)))
@@ -280,3 +284,5 @@
 (define .sum dual-sum)
 (define .mean dual-mean)
 (define .sum-axis dual-sum-axis)
+(define (.square x) (.expt x 2))
+(define (.dot x y) (.sum (.* x y)))
