@@ -48,7 +48,7 @@
                 ((and (array? a) (specialized-array? a))
                  (array-storage-class a))
                 (else generic-storage-class)))
-         (val (+ init (or (storage-class-default storage) 0.0))))
+         (val (+ init (or (storage-class-default storage) 0))))
     (make-specialized-array domain storage val)))
 
 ;;> Returns an all-zero array with the same domain as \var{a}, either
@@ -65,17 +65,11 @@
 
 ;;> Returns the 2-d identity matrix of size \var{n}.
 (define (identity-array n . o)
-  (let ((res (make-specialized-array
-              (make-interval (vector n n))
-              (if (pair? o) (car o) generic-storage-class))))
-    (do ((i 0 (+ i 1)))
-        ((= i n))
-      (do ((j 0 (+ j 1)))
-          ((= j n))
-        (array-set! res 0 i j)))
+  (let* ((res (apply zeros (make-interval (vector n n)) o))
+         (one (+ 1 (array-ref res 0 0))))
     (do ((i 0 (+ i 1)))
         ((= i n) res)
-      (array-set! res 1 i i))))
+      (array-set! res one i i))))
 
 ;; ultra-slow leibniz formula
 ;; (define (determinant a)
@@ -647,9 +641,7 @@
 (define (list-of-arrays->broadcast-dest arrays)
   (let ((domain (list-of-arrays->broadcast-domain arrays))
         (storage (widest-storage-class arrays)))
-    (make-specialized-array domain
-                            storage
-                            (or (storage-class-default storage) 0))))
+    (zeros domain storage)))
 
 ;; First generate a zero array capable of holding the result, add in
 ;; the first array then apply the op on the remaining arrays.
@@ -839,15 +831,8 @@
                    w))
          (storage (if (specialized-array? a)
                       (array-storage-class a)
-                      generic-storage-class))
-         (ones (make-specialized-array
-                (make-interval widths)
-                storage
-                (if (and (number? (storage-class-default storage))
-                         (inexact? (storage-class-default storage)))
-                    1.
-                    1))))
-    (array-mul a ones)))
+                      generic-storage-class)))
+    (array-mul a (ones (make-interval widths) storage))))
 
 ;;> Sums the axis and squeezes out the resulting sum axis.
 (define (array-sum-axis/squeeze a . o)
