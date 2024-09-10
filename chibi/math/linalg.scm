@@ -34,6 +34,10 @@
               arrays)
        (apply array-every = a arrays)))
 
+;;> Returns the first element of a. Throws an exception if a is empty.
+(define (array-first a)
+  (apply array-ref a (interval-lower-bounds->list (array-domain a))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; linear algebra
 
@@ -686,24 +690,26 @@
     sum))
 
 (define (array-map-elements! proc a)
-  (let ((a-getter (array-getter a))
-        (a-setter (array-setter a)))
-    (interval-for-each
-     (case (array-dimension a)
-       ((1)
-        (lambda (i) (a-setter (proc (a-getter i)) i)))
-       ((2)
-        (lambda (i j) (a-setter (proc (a-getter i j)) i j)))
-       (else
-        (lambda multi-index
-          (apply a-setter
-                 (proc (apply a-getter multi-index))
-                 multi-index))))
-     (array-domain a))
-    a))
+  (if (array? a)
+      (let ((a-getter (array-getter a))
+            (a-setter (array-setter a)))
+        (interval-for-each
+         (case (array-dimension a)
+           ((1)
+            (lambda (i) (a-setter (proc (a-getter i)) i)))
+           ((2)
+            (lambda (i j) (a-setter (proc (a-getter i j)) i j)))
+           (else
+            (lambda multi-index
+              (apply a-setter
+                     (proc (apply a-getter multi-index))
+                     multi-index))))
+         (array-domain a))
+        a)
+      (proc a)))
 
 (define (array-map-elements proc a)
-  (array-map proc a))
+  (if (array? a) (array-map proc a) (proc a)))
 
 (define (array-exp a) (array-map-elements exp a))
 (define (array-exp! a) (array-map-elements! exp a))
@@ -725,33 +731,37 @@
 ;;> Returns the sum of all elements in array \var{a}.  Not a norm
 ;;> because it can yield negative results.
 (define (array-sum a)
-  (array-fold-left + 0 a))
+  (if (array? a) (array-fold-left + 0 a) a))
 
 ;;> Returns the sum of the absolute values of all elements in array
 ;;> \var{a}.  Aka the L1-norm, taxicab norm, or Manhattan norm.
 (define (array-1norm a)
-  (array-fold-left (lambda (acc x) (+ (abs x) acc)) 0 a))
+  (if (array? a) (array-fold-left (lambda (acc x) (+ (abs x) acc)) 0 a) a))
 
 ;;> Returns the sum of the square of all elements in array \var{a}.
 ;;> Aka the L2-norm, Euclidean norm, Frobenius norm or square norm.
 (define (array-2norm a)
-  (sqrt (array-dot a a)))
+  (sqrt (if (array? a) (array-dot a a) (square a))))
 
 ;;> Returns the sum of the absolute value of all elements in array
 ;;> \var{a} raised to the \var{p} power.  Aka the p-norm, this is the
 ;;> generalized form of the above.
 (define (array-norm a p)
-  (expt (array-fold-left (lambda (acc x) (+ (expt (abs x) p) acc)) 0 a) (/ p)))
+  (expt (if (array? a)
+            (array-fold-left (lambda (acc x) (+ (expt (abs x) p) acc)) 0 a)
+            (expt (abs a) p))
+        (/ p)))
 
 ;;> Returns the maximum absolute value of all elements in array
 ;;> \var{a}.  Aka the max norm or infinity norm.
 (define (array-inf-norm a)
-  (array-fold-left (lambda (acc x) (max (abs x) acc)) 0 a))
+  (if (array? a) (array-fold-left (lambda (acc x) (max (abs x) acc)) 0 a) a))
 
 (define array-max-norm array-inf-norm)
 
+;;> Returns the average (Euclidean mean) of all elements in the array.
 (define (array-mean a)
-  (/ (array-sum a) (interval-volume (array-domain a))))
+  (if (array? a) (/ (array-sum a) (interval-volume (array-domain a))) a))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utilities

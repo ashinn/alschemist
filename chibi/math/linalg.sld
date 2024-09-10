@@ -6,7 +6,7 @@
           (srfi 33) (srfi 231)
           (chibi assert) (chibi optional))
   (export array= array-append array-stack identity-array
-          array-to-origin array-transpose
+          array-to-origin array-transpose array-first
           array-inverse determinant
           array-broadcast array-squeeze
           array-mul array-mul! array-mul-expt
