@@ -738,6 +738,10 @@
   (array-expt a 2))
 (define (array-square! a)
   (array-expt! a 2))
+(define (array-sqrt a)
+  (array-expt a .5))
+(define (array-sqrt! a)
+  (array-expt! a .5))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; norms
@@ -788,12 +792,57 @@
 (define (array-columns a)
   (array-rows (array-transpose a)))
 
-;;> Returns an array of just the selected column indexes of a per row.
+;;> Selects a subset of the \var{axis} of \var{a} by index, which
+;;> should be a vector of integers in the range 0 to
+;;> \scheme{(interval-width (array-domain \var{a}) \var{axis})},
+;;> exclusive.  The \var{axis} is resized to the length of
+;;> \var{indexes}, and its indexes map to the elements of
+;;> \var{indexes} in order (which may repeat).
+(define (array-select a axis indexes)
+  (let* ((a-getter (array-getter a))
+         (lbs (interval-lower-bounds->vector (array-domain a)))
+         (ubs (interval-upper-bounds->vector (array-domain a)))
+         (domain (make-interval
+                  (vector-append (vector 0) (vector-copy lbs 1))
+                  (vector-append (vector (vector-length indexes))
+                                 (vector-copy ubs 1)))))
+    (make-array
+     domain
+     (case (array-dimension a)
+       ((1)
+        (lambda (i) (a-getter (vector-ref indexes i))))
+       ((2)
+        (if (= axis 0)
+            (lambda (i j) (a-getter (vector-ref indexes i) j))
+            (lambda (i j) (a-getter i (vector-ref indexes j)))))
+       ((3)
+        (case axis
+          ((0) (lambda (i j k) (a-getter (vector-ref indexes i) j k)))
+          ((1) (lambda (i j k) (a-getter i (vector-ref indexes j) k)))
+          ((2) (lambda (i j k) (a-getter i j (vector-ref indexes k))))
+          (else (error "axis out of range" domain axis))))
+       (else
+        (lambda multi-index
+          (let ((selected-index
+                 (vector-ref indexes (list-ref multi-index axis))))
+            (apply a-getter (list-set multi-index axis selected-index)))))))))
+
+;;> Convenience variant of array-select to immediately copy the result
+;;> into a specialized array with the same storage class as \var{a}.
+(define (array-select/copy a axis indexes . o)
+  (let ((storage (if (pair? o)
+                     (car o)
+                     (or (and (specialized-array? a) (array-storage-class a))
+                         generic-storage-class))))
+    (array-copy (array-select a axis indexes) storage)))
+
+;;> Returns an array of just the selected column indexes of \var{a} per row.
 ;;> Equivalent to pytorch: a[torch.arange(num), indexes]
 (define (array-select-columns a indexes . o)
   (let ((storage (if (pair? o)
                      (car o)
-                     (or (array-storage-class a) generic-storage-class))))
+                     (or (and (specialized-array? a) (array-storage-class a))
+                         generic-storage-class))))
     (list*->array
      1
      (map (lambda (i j) (array-ref a i j))
@@ -807,8 +856,9 @@
   (let* ((n (interval-width (array-domain a) 0))
          (storage (if (pair? o)
                       (car o)
-                      (or (array-storage-class a) generic-storage-class)))
-         (res (make-specialized-array (make-interval (vector n n)) storage)))
+                      (or (and (specialized-array? a) (array-storage-class a))
+                          generic-storage-class)))
+         (res (zeros (make-interval (vector n n)) storage)))
     (for-each
      (lambda (i j)
        (array-set! res (array-ref a j) j i))

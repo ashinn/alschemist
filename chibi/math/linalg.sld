@@ -16,12 +16,14 @@
           array-map-elements array-map-elements!
           array-exp array-exp! array-log array-log!
           array-expt array-expt! array-square array-square!
+          array-sqrt array-sqrt!
           array-min! array-max! array-min array-max
           array-relu array-dot array-convolve
           array-sum array-1norm array-2norm
           array-inf-norm array-norm array-max-norm
           array-mean array-rows array-columns
           array-select-columns array-unselect-columns
+          array-select array-select/copy
           array-diag array-sum-axis array-sum-axis/squeeze
           array-sum-rows array-normalize-rows
           array-of zeros ones

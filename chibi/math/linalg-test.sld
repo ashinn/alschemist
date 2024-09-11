@@ -269,6 +269,13 @@
           (array->list*
            (array-normalize-rows
             (tensor '((0. 1.) (1. 3.)) f32-storage-class))))
+      (let ((a (tensor '((0. 1.) (2. 3.) (4. 5.) (6. 7.)))))
+        (test-array (tensor '((0. 1.) (4. 5.)))
+          (array-select/copy a 0 '#(0 2)))
+        (test-array (tensor '((4. 5.) (2. 3.) (4. 5.) (6. 7.)))
+          (array-select/copy a 0 '#(2 1 2 3)))
+        (test-array (make-specialized-array (make-interval '#(0 2)))
+          (array-select/copy a 0 '#())))
       (test '(1 3 8)
           (array->list*
            (array-select-columns (tensor '((0 1 2) (3 4 5) (6 7 8)))
