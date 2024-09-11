@@ -1,11 +1,15 @@
 
 (define-library (chibi ai nn-test)
   (import (scheme base) (scheme list)
-          (srfi 231)
+          (srfi 27) (srfi 231)
           (chibi math autodiff) (chibi math linalg)
           (chibi ai nn) (chibi test))
   (export run-tests)
   (begin
+    (define test-random-source
+      (let ((rs (make-random-source)))
+        (random-source-pseudo-randomize! rs 23 42)
+        rs))
     (define (depth ls)
       (if (list? ls) (+ 1 (depth (car ls))) 0))
     (define (tensor nested-ls . o)
@@ -57,5 +61,29 @@
             (test-array (tensor '(3.98 1.97))
               (dual-value (first weights)))
             (test 6.16
-                (dual-value (second weights))))))
+                (dual-value (second weights)))))
+        ;; Ideally sampling should reduce the time/memory.
+        (parameterize ((max-learning-iterations 25)
+                       (learning-batch-size 3)
+                       (current-test-epsilon 1.))
+          (let ((weights (velocity-gradient-descent
+                          (sampling-loss (l2-loss plane)
+                                         plane-xs
+                                         plane-ys
+                                         test-random-source)
+                          (list (tensor '(0. 0.)) 0.))))
+            (test-array (tensor '(3.98 1.97))
+              (dual-value (first weights)))
+            (test 6.16
+                (dual-value (second weights)))))
+        (parameterize ((max-learning-iterations 25)
+                       (current-test-epsilon 1.))
+          (let ((weights (adam-gradient-descent
+                          ((l2-loss plane) plane-xs plane-ys)
+                          (list (tensor '(0. 0.)) 0.))))
+            (test-array (tensor '(3.98 1.97))
+              (dual-value (first weights)))
+            (test 6.16
+                (dual-value (second weights)))))
+        )
       (test-end))))
