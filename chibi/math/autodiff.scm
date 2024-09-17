@@ -212,19 +212,11 @@
                          (array* (- 1.0 (square value)) grad))))
          (gradients-inc! grads a delta))))))
 
-(define (dual-relu a)
-  (let* ((value (array-relu (dual-value a)))
-         (ones (if (array? (dual-value a))
-                   (array-copy (array-map (lambda (x) (if (zero? x) x 1))
-                                          (dual-value a))
-                               (if (specialized-array? (dual-value a))
-                                   (array-storage-class (dual-value a))
-                                   generic-storage-class))
-                   1)))
-    (dual
-     value
-     (lambda (self grads)
-       (gradients-inc! grads a (array* ones (gradients-ref grads self)))))))
+(define (dual-rectify a)
+  (dual
+   (array-rectify (dual-value a))
+   (lambda (self grads)
+     (gradients-inc! grads a (gradients-ref grads self)))))
 
 (define (dual-sum a)
   (let ((a (as-dual a)))
@@ -240,13 +232,31 @@
   (let* ((a (as-dual a))
          (a-val (dual-value a))
          (axis (if (pair? o) (car o) (- (array-dimension a-val) 1)))
-         (widths (let ((w (interval-widths (array-domain a-val))))
-                   (vector-set! w axis 1)
-                   w))
+         (width (interval-width (array-domain a-val) axis))
          (storage (if (specialized-array? a-val)
                       (array-storage-class a-val)
                       generic-storage-class)))
-    (dual-matmul a (ones (make-interval widths) storage one))))
+    (cond
+     ((< (array-dimension a-val) 2)
+      (array-sum a))
+     ((> (array-dimension a-val) 2)
+      (error "dual-sum-axis not yet supported on higher dimensions" a))
+     ((= axis 1)
+      ;; (m, n) x (n, 1) => (m, 1)
+      (dual-matmul a (ones (make-interval (vector width 1)) storage)))
+     (else
+      ;; (1, m) x (m, n) => (1, n)
+      (dual-matmul (ones (make-interval (vector 1 width)) storage) a)))))
+
+(define (dual-sum-axis/squeeze a . o)
+  (let* ((axis (if (pair? o) (car o) (- (array-dimension (dual-value a)) 1)))
+         (res (dual-sum-axis a axis)))
+    (dual
+     (array-squeeze (dual-value res) axis)
+     (lambda (self grads)
+       (let ((grad (gradients-ref grads self)))
+         ;; The squeezed gradient should broadcast correctly.
+         (gradients-inc! grads res grad))))))
 
 (define (dual-mean a)
   (dual/ (dual-sum a)
@@ -279,10 +289,11 @@
 (define .expt dual-expt)
 (define .exp dual-exp)
 (define .log dual-log)
-(define .relu dual-relu)
+(define .rectify dual-rectify)
 (define .tanh dual-tanh)
 (define .sum dual-sum)
 (define .mean dual-mean)
 (define .sum-axis dual-sum-axis)
+(define .sum-axis/squeeze dual-sum-axis/squeeze)
 (define (.square x) (.expt x 2))
 (define (.dot x y) (.sum (.* x y)))

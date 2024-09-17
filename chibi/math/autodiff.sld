@@ -1,6 +1,6 @@
 
 (define-library (chibi math autodiff)
-  (import (scheme base)
+  (import (scheme base) (scheme write)
           (scheme inexact)
           (scheme hash-table)
           (scheme list)
@@ -11,6 +11,7 @@
    let-duals let*-duals zero one
    gradient const dual dual? dual-value dual-link as-dual
    .+ .* .- ./ .@
-   .expt .exp .log .tanh .relu .sum .dot .sum-axis .square .mean
+   .expt .exp .log .tanh .rectify .sum .dot .sum-axis .sum-axis/squeeze
+   .square .mean
    )
   (include "autodiff.scm"))
