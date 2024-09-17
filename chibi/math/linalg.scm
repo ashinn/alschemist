@@ -436,6 +436,7 @@
                      array new-domain a-dim)))))))))))
 
 (define (array-squeeze a . o)
+  ;; TODO: Just reshape where applicable.
   (let ((pred (if (pair? o)
                   (cond
                    ((procedure? (car o)) (car o))
@@ -449,10 +450,10 @@
                          (and (pred k) (eqv? (interval-width interval k) 1)))
                        (iota (array-dimension a)))))
       (lambda (ones rest)
-        (car (array->list
-              (array-curry
-               (array-permute a (list->vector (append ones rest)))
-               (length rest))))))))
+        (array-first
+         (array-curry
+          (array-permute a (list->vector (append ones rest)))
+          (length rest)))))))
 
 ;; Defines an elementwise array operation of two arguments,
 ;; arrays a and b, which applies op to all of the corresponding
@@ -691,7 +692,7 @@
     (for-each (lambda (array) (array-max! dest array)) (cdr arrays))
     (unwrap-trivial-from-scalars dest arrays)))
 
-(define (array-relu array)
+(define (array-rectify array)
   (array-max 0 array))
 
 ;; General mapping.
@@ -876,13 +877,21 @@
 ;;> defaulting to the last.
 (define (array-sum-axis a . o)
   (let* ((axis (if (pair? o) (car o) (- (array-dimension a) 1)))
-         (widths (let ((w (interval-widths (array-domain a))))
-                   (vector-set! w axis 1)
-                   w))
+         (width (interval-width (array-domain a) axis))
          (storage (if (specialized-array? a)
                       (array-storage-class a)
                       generic-storage-class)))
-    (array-mul a (ones (make-interval widths) storage))))
+    (cond
+     ((< (array-dimension a) 2)
+      (array-sum a))
+     ((> (array-dimension a) 2)
+      (error "array-sum-axis not yet supported on higher dimensions" a))
+     ((= axis 1)
+      ;; (m, n) x (n, 1) => (m, 1)
+      (array-mul a (ones (make-interval (vector width 1)) storage)))
+     (else
+      ;; (1, m) x (m, n) => (1, n)
+      (array-mul (ones (make-interval (vector 1 width)) storage) a)))))
 
 ;;> Sums the axis and squeezes out the resulting sum axis.
 (define (array-sum-axis/squeeze a . o)
@@ -969,6 +978,59 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; utilities
+
+(define array-type-tag
+  (let ((storage-tags
+         `((,u1-storage-class . "u1")
+           (,u8-storage-class . "u8")
+           (,u16-storage-class . "u16")
+           (,u32-storage-class . "u32")
+           (,u64-storage-class . "u64")
+           (,s8-storage-class . "s8")
+           (,s16-storage-class . "s16")
+           (,s32-storage-class . "s32")
+           (,s64-storage-class . "s64")
+           (,f32-storage-class . "f32")
+           (,f64-storage-class . "f64")
+           (,c64-storage-class . "c64")
+           (,c128-storage-class . "c128"))))
+    (lambda (a)
+      (cond ((and (specialized-array? a)
+                  (assq (array-storage-class a) storage-tags))
+             => cdr)
+            (else "a")))))
+
+;;> SRFI 163 syntax.
+(define (write-array x . o)
+  (let* ((dst (if (pair? o) (car o) (current-output-port)))
+         (out (if dst
+                  (if (eq? dst #t) (current-output-port) dst)
+                  (open-output-string))))
+    (let lp ((x x))
+      (cond
+       ((array? x)
+        (write-string "#" out)
+        (write (array-dimension x) out)
+        (write-string (array-type-tag x) out)
+        ;; TODO: Print bounds if non-zero lowers.
+        (if (zero? (array-dimension x))
+            (write-string " " out))
+        (lp (array->list* x)))
+       ((list? x)
+        (write-string "(" out)
+        (pair-for-each
+         (lambda (xp)
+           (unless (eq? xp x)
+             (write-string " " out))
+           (lp (car xp)))
+         x)
+        (write-string ")" out))
+       ((vector? x)
+        (write-string "#(" out)
+        (vector-for-each (lambda (xi) (lp xi) (write-string " " out)) x)
+        (write-string ")" out))
+       (else (write x out))))
+    (if (not dst) (get-output-string out))))
 
 ;;> Nicely formatted printing for arrays of any rank.  Ranks
 ;;> higher than 2 are represented as successive 2D drawings.

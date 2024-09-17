@@ -18,7 +18,7 @@
           array-expt array-expt! array-square array-square!
           array-sqrt array-sqrt!
           array-min! array-max! array-min array-max
-          array-relu array-dot array-convolve
+          array-rectify array-dot array-convolve
           array-sum array-1norm array-2norm
           array-inf-norm array-norm array-max-norm
           array-mean array-rows array-columns
@@ -27,7 +27,7 @@
           array-diag array-sum-axis array-sum-axis/squeeze
           array-sum-rows array-normalize-rows
           array-of zeros ones
-          pretty-print-array)
+          write-array pretty-print-array)
   ;; old names for backwards compatibility
   (export (rename array* array-mul-elements)
           (rename array/ array-div-elements)
