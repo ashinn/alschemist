@@ -110,3 +110,73 @@
 
 (define adam-gradient-descent
   (gradient-descent adam-i adam-d adam-u))
+
+(define-record-type Block
+  (make-block fn shape-list name)
+  block?
+  (fn block-fn)
+  (shape-list block-ls)
+  (name block-name))
+
+(define (block fn shape-list . o)
+  (make-block fn shape-list (and (pair? o) (car o))))
+
+(define (vector->matrix v)
+  (specialized-array-reshape
+   v
+   (make-interval (vector (interval-width (array-domain v) 0) 1))))
+
+(define (linear t)
+  (lambda (weights)
+    (.+ (.sum-axis/squeeze (.@ (first weights) (vector->matrix t)))
+        (second weights))))
+
+(define (relu t)
+  (lambda (weights)
+    (.rectify ((linear t) weights))))
+
+(define (block-compose f g j)
+  (lambda (t)
+    (lambda (weights)
+      ((g ((f t) weights))
+       (drop weights j)))))
+
+(define (stack2 ba bb)
+  (block
+   (block-compose
+    (block-fn ba)
+    (block-fn bb)
+    (length (block-ls ba)))
+   (append
+    (block-ls ba)
+    (block-ls bb))))
+
+(define (flip f) (lambda (a b) (f b a)))
+
+(define (stack-blocks blocks)
+  (fold (flip stack2) (car blocks) (cdr blocks)))
+
+(define (dense-block n m)
+  (block relu
+         (list (list m n)
+               (list m))))
+
+(define (init-weights shapes)
+  (map init-shape shapes))
+
+(define (init-shape shape)
+  (if (= 1 (length shape))
+      (zeros (make-interval (vector (first shape))))
+      (random-array 0. (/ 2. (second shape)) shape)))
+
+(define (random-array mean variance shape . o)
+  (let ((storage (if (pair? o) (car o) generic-storage-class)))
+    (specialized-array-reshape
+     (make-specialized-array-from-data
+      (random-sample (fold * 1 shape) (normal-distribution mean variance))
+      storage)
+     (make-interval (list->vector shape)))))
+
+(define (model target weights)
+  (lambda (t)
+    ((target t) weights)))
