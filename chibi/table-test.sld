@@ -5,6 +5,13 @@
           (srfi 231)
           (chibi table)
           (chibi test))
+  (cond-expand
+   (chibi
+    (import (only (chibi) find-module-file)))
+   (else
+    (begin
+      (define (find-module-file path)
+        path))))
   (export run-tests)
   (begin
     (define (run-tests)
@@ -47,4 +54,8 @@
         (test 38 (table-ref passengers 1 'age))
         (test 7.25 (table-ref passengers 0 'fare))
         )
+      (let ((passengers
+             (table-load-csv (find-module-file "chibi/table-example.csv")
+                             'header-from-first-line?: #t)))
+        (test "Heikkinen, Miss. Laina" (table-ref passengers 2 'Name)))
       (test-end))))
