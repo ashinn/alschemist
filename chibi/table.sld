@@ -13,5 +13,6 @@
           table-num-rows table-num-columns table-shape
           table-arrays table-type-specs table-labels
           table->array table-column
-          table-load-csv)
+          table-load-csv
+          infer-csv-grammar)
   (include "table.scm"))

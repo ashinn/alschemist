@@ -3,6 +3,7 @@
   (import (scheme base)
           (scheme write)
           (srfi 231)
+          (chibi csv)
           (chibi table)
           (chibi test))
   (cond-expand
@@ -54,6 +55,8 @@
         (test 38 (table-ref passengers 1 'age))
         (test 7.25 (table-ref passengers 0 'fare))
         )
+      (test (csv-grammar '((separator-chars #\,)))
+          (infer-csv-grammar (open-input-string "")))
       (let ((passengers
              (table-load-csv (find-module-file "chibi/table-example.csv")
                              'header-from-first-line?: #t)))

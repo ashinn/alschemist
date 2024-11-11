@@ -175,10 +175,64 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (infer-csv-grammar file)
-  (call-with-input-file file
-    (lambda (in)
-      default-csv-grammar)))
+(define potential-separators (string->list ",;:!|\t/$"))
+
+(define (vector-sum vec) (vector-fold + 0 vec))
+
+(define (infer-csv-grammar-from-counts counts)
+  ;; For each of the potential separators, consider it's average count
+  ;; per record and take the MAE of the difference between each record
+  ;; and the average.  Choose the separator with the smallest error,
+  ;; breaking ties with the most common separator.
+  (let lp ((ls counts)
+           (min-err +inf.0)
+           (min-sum +inf.0)
+           (min-sep #\,))
+    (if (null? ls)
+        ;; TODO: Consider inferring quoting.
+        (csv-grammar `((separator-chars ,min-sep)))
+        (let* ((sep (caar ls))
+               (count-per-line (cdar ls))
+               (sum (vector-sum count-per-line)))
+          (if (> sum 0)
+              (let* ((avg (/ sum (vector-length count-per-line)))
+                     (mae (vector-sum
+                           (vector-map (lambda (x) (abs (- avg x)))
+                                       count-per-line))))
+                (if (< mae min-err)
+                    (lp (cdr ls) mae sum sep)
+                    (lp (cdr ls) min-err min-sum min-sep)))
+              (lp (cdr ls) min-err min-sum min-sep))))))
+
+;; currently assumes crlf or lf as the record separator
+(define (infer-csv-grammar x)
+  (define (infer in)
+    (let ((counts (map (lambda (ch) (cons ch (make-vector 5 0)))
+                       potential-separators)))
+      (let lp ((line 0))
+        (let ((ch (read-char in)))
+          (cond
+           ((eof-object? ch)
+            (infer-csv-grammar-from-counts
+             (if (< line 4)
+                 (map (lambda (x) (cons (car x) (vector-copy (cdr x) 0 line)))
+                      counts)
+                 counts)))
+           ((eqv? ch #\newline)
+            (if (>= line 4)
+                (infer-csv-grammar-from-counts counts)
+                (lp (+ line 1))))
+           ((assv ch counts)
+            => (lambda (cell)
+                 (vector-set! (cdr cell)
+                              line
+                              (+ 1 (vector-ref (cdr cell) line)))
+                 (lp line)))
+           (else
+            (lp line)))))))
+  (if (input-port? x)
+      (infer x)
+      (call-with-input-file x infer)))
 
 (define (infer-csv-types file grammar num-cols numeric-storage)
   (call-with-input-file file
