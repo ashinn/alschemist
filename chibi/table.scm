@@ -145,6 +145,10 @@
        (make-interval (vector 0 col)
                       (vector (table-num-rows table) (+ col 1)))))))
 
+(define (table-column-storage table column)
+  (call-with-values (lambda () (table-resolve-index table 0 column))
+    (lambda (array row col) (array-storage-class array))))
+
 ;;> Returns a single homogenous array containing the requested columns
 ;;> of the table, in order, using the most specific storage class
 ;;> possible.
@@ -205,53 +209,90 @@
               (lp (cdr ls) min-err min-sum min-sep))))))
 
 ;; currently assumes crlf or lf as the record separator
-(define (infer-csv-grammar x)
-  (define (infer in)
-    (let ((counts (map (lambda (ch) (cons ch (make-vector 5 0)))
-                       potential-separators)))
-      (let lp ((line 0))
-        (let ((ch (read-char in)))
-          (cond
-           ((eof-object? ch)
-            (infer-csv-grammar-from-counts
-             (if (< line 4)
-                 (map (lambda (x) (cons (car x) (vector-copy (cdr x) 0 line)))
-                      counts)
-                 counts)))
-           ((eqv? ch #\newline)
-            (if (>= line 4)
-                (infer-csv-grammar-from-counts counts)
-                (lp (+ line 1))))
-           ((assv ch counts)
-            => (lambda (cell)
-                 (vector-set! (cdr cell)
-                              line
-                              (+ 1 (vector-ref (cdr cell) line)))
-                 (lp line)))
-           (else
-            (lp line)))))))
-  (if (input-port? x)
-      (infer x)
-      (call-with-input-file x infer)))
+(define (infer-csv-grammar x . o)
+  (let ((max-lines (if (pair? o) (car o) 5)))
+    (define (infer in)
+      (let ((counts (map (lambda (ch) (cons ch (make-vector max-lines 0)))
+                         potential-separators)))
+        (let lp ((line 0))
+          (let ((ch (read-char in)))
+            (cond
+             ((eof-object? ch)
+              (infer-csv-grammar-from-counts
+               (if (< line 4)
+                   (map (lambda (x) (cons (car x) (vector-copy (cdr x) 0 line)))
+                        counts)
+                   counts)))
+             ((eqv? ch #\newline)
+              (if (>= (+ line 1) max-lines)
+                  (infer-csv-grammar-from-counts counts)
+                  (lp (+ line 1))))
+             ((assv ch counts)
+              => (lambda (cell)
+                   (vector-set! (cdr cell)
+                                line
+                                (+ 1 (vector-ref (cdr cell) line)))
+                   (lp line)))
+             (else
+              (lp line)))))))
+    (if (input-port? x)
+        (infer x)
+        (call-with-input-file x infer))))
 
-(define (infer-csv-types file grammar num-cols numeric-storage)
-  (call-with-input-file file
-    (lambda (in)
-      (make-vector num-cols generic-storage-class))))
+(define (infer-storage? str numeric-storage)
+  (cond
+   ((string->number str) numeric-storage)
+   ;; TODO: Consider supporting TRUE/FALSE booleans.
+   (else generic-storage-class)))
 
-(define (csv-read->table-row! parser table row-num)
+(define (csv-read->storage parser num-cols numeric-storage)
   (lambda (in)
-    (parser (lambda (acc col-num field)
-              (table-set! table row-num col-num field)
-              #t)
-            #t
-            in)))
+    (let ((res (make-vector num-cols generic-storage-class)))
+      (let ((len (parser
+                  (lambda (prev-i i field)
+                    (let ((storage (infer-storage? field numeric-storage)))
+                      (vector-set! res i storage)
+                      i))
+                  0
+                  in)))
+        (if (or (eof-object? len) (zero? len))
+            (eof-object)
+            res)))))
+
+(define (infer-csv-types file parser num-cols numeric-storage . o)
+  (let ((max-lines (if (pair? o) (car o) 50)))
+    (call-with-input-file file
+      (lambda (in)
+        ;; just throw away the first line in case it's a header
+        (let ((maybe-header ((csv-read->vector parser) in))
+              (reader (csv-read->storage parser num-cols numeric-storage)))
+          (let lp ((line 1)
+                   (res-storages (reader in)))
+            (if (>= line max-lines)
+                res-storages
+                (let ((storages (reader in)))
+                  (if (eof-object? storages)
+                      res-storages
+                      (lp (+ line 1)
+                          (vector-map storage-class-fit res-storages storages))
+                    )))))))))
+
+(define (csv-read->table-row! parser table converters row-num)
+  (lambda (in)
+    (parser
+     (lambda (acc col-num field)
+       (let ((val (guard (exn (else (if (equal? "" field) 0.0 +nan.0)))
+                    ((vector-ref converters col-num) field))))
+         (table-set! table row-num col-num val)
+         #t))
+     #t
+     in)))
 
 (define (table-load-csv file . o)
   (let-keywords* o ((grammar (infer-csv-grammar file))
                     (parser (csv-parser grammar))
                     (header-from-first-line? #f)
-                    (default-storage #f)
+                    (storage #f)
                     (numeric-storage f32-storage-class)
                     (num-rows (- (call-with-input-file file
                                    (lambda (in) (csv-num-rows grammar in)))
@@ -267,12 +308,24 @@
                                   (string-append "col-" (number->string i)))
                                 (vector-length row)))))))
                     (num-cols (vector-length labels))
-                    (types (if default-storage
-                               (make-vector num-cols default-storage)
+                    (types (if storage
+                               (make-vector num-cols storage)
                                (infer-csv-types file
-                                                grammar
+                                                parser
                                                 num-cols
-                                                numeric-storage))))
+                                                numeric-storage)))
+                    ;; TODO: If the numeric fields coincide with
+                    ;; unquoted fields, use 'quote-non-numeric? #t.
+                    (converters
+                     (vector-map
+                      (lambda (type)
+                        (cond
+                         ((eq? generic-storage-class type)
+                          (lambda (field) field))
+                         ((inexact? (storage-class-default type))
+                          (lambda (field) (inexact (string->number field))))
+                         (else string->number)))
+                      types)))
     (let*-values (((arrays type-specs) (types->arrays types num-rows num-cols))
                   ((table) (make-table arrays type-specs labels '#())))
       (call-with-input-file file
@@ -281,6 +334,6 @@
             (csv-skip-line in grammar))
           (let lp ((row-num 0))
             (unless (eof-object?
-                     ((csv-read->table-row! parser table row-num) in))
+                     ((csv-read->table-row! parser table converters row-num) in))
               (lp (+ row-num 1))))))
       table)))
