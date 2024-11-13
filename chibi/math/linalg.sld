@@ -28,7 +28,7 @@
           array-sum-rows array-normalize-rows
           array-of zeros ones
           write-array pretty-print-array
-          widest-storage-class)
+          storage-class-fit widest-storage-class)
   ;; old names for backwards compatibility
   (export (rename array* array-mul-elements)
           (rename array/ array-div-elements)
