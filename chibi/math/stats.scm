@@ -1,5 +1,5 @@
 ;; stats.scm -- basic statistics library
-;; Copyright (c) 2019-2020 Alex Shinn.  All rights reserved.
+;; Copyright (c) 2019-2024 Alex Shinn.  All rights reserved.
 ;; BSD-style license: http://synthcode.com/license.txt
 
 ;;> Statistics is the branch of mathematics dealing with the collection
@@ -13,53 +13,51 @@
 ;;> basic utilities for both of these covering many common use cases,
 ;;> while serving as a basis for more advanced uses.
 
-(define-syntax assert
-  (syntax-rules ()
-    ((assert expr ...)
-     (if (not (and expr ...))
-         (error "assertion failed" '(and expr ...))))))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Sequence utilities - all procedures handle both lists and vectors
+;; Sequence utilities - all procedures handle lists, vectors and arrays
 
 (define (seq? seq)
-  (or (pair? seq) (null? seq) (vector? seq)))
+  (or (pair? seq) (null? seq) (vector? seq) (array? seq)))
 
 (define (seq-length seq)
-  (if (vector? seq) (vector-length seq) (length seq)))
+  (cond ((vector? seq) (vector-length seq))
+        ((array? seq) (interval-volume (array-domain seq)))
+        (else (length seq))))
 
 (define (seq-ref seq k)
-  (if (vector? seq) (vector-ref seq k) (list-ref seq k)))
+  (cond ((vector? seq) (vector-ref seq k))
+        ((array? seq) (array-ref seq k))
+        (else (list-ref seq k))))
 
 (define (seq-for-each proc seq . o)
-  (apply (if (vector? seq) vector-for-each for-each) proc seq o))
+  (apply (cond ((vector? seq) vector-for-each)
+               ((array? seq) array-for-each)
+               (else for-each))
+         proc seq o))
 
 (define (seq-fold kons knil seq . o)
-  (if (vector? seq)
-      (apply vector-fold kons knil seq o)
-      ;; accumulator agrees with SRFI 133 order, not SRFI 1
-      (apply fold
-             (lambda args (apply kons (last args) (drop-right args 1)))
-             knil seq o)))
+  (cond
+   ((vector? seq)
+    (apply vector-fold kons knil seq o))
+   ((array? seq)
+    (apply array-fold-left kons knil seq o))
+   ;; accumulator agrees with SRFI 133 order, not SRFI 1
+   (else
+    (apply fold
+           (lambda args (apply kons (last args) (drop-right args 1)))
+           knil seq o))))
 
 (define (seq-map proc seq . o)
-  (apply (if (vector? seq) vector-map map) proc seq o))
+  (apply (cond ((vector? seq) vector-map)
+               ((array? seq) array-map)
+               (else map))
+         proc seq o))
 
 (define (seq-any pred seq . o)
-  (if (null? o)
-      ((if (vector? seq) vector-any any) pred seq)
-      (let* ((seq1 seq)
-             (seq2 (car o))
-             (len1 (seq-length seq1))
-             (len2 (seq-length seq1)))
-        (let lp ((i 0) (j 0) (ls1 seq1) (ls2 seq2))
-          (and (< i len1)
-               (< j len2)
-               (or (pred (if (pair? ls1) (car ls1) (seq-ref seq1 i))
-                         (if (pair? ls2) (car ls2) (seq-ref seq2 j)))
-                   (lp (+ i 1) (+ j 1)
-                       (if (pair? ls1) (cdr ls1) ls1)
-                       (if (pair? ls2) (cdr ls2) ls2))))))))
+  (apply (cond ((vector? seq) vector-any) ((array? seq) array-any) (else any))
+         pred
+         seq
+         o))
 
 (define (seq-every pred seq . o)
   (not (apply seq-any (lambda args (not (apply pred args))) seq o)))
@@ -1005,7 +1003,9 @@
         (let lp ((i 0) (ls dist) (m 0))
           (cond
            ((>= m n)
-            (if (vector? seq) res (vector->list res)))
+            (cond ((vector? seq) res)
+                  ((array? seq) (vector*->array 1 res (array-storage-class seq)))
+                  (else (vector->list res))))
            ((>= (* (- len i) (random-real)) (- n m))
             (lp (+ i 1) (if (pair? ls) (cdr ls) ls) m))
            (else
@@ -1138,7 +1138,11 @@
              (make-multi-sampler seq (lambda (x) (/ (get-weight x) total-weight))))
             (res (make-vector n)))
         (do ((i 0 (+ i 1)))
-            ((= i n) (if (vector? seq) res (vector->list res)))
+            ((= i n)
+             (cond
+              ((vector? seq) res)
+              ((array? seq) (vector*->array 1 res (array-storage-class seq)))
+              (else (vector->list res))))
           (let* ((alias (random-pick table))
                  (elt (if (flip? (alias-prob alias))
                           (alias-element alias)
@@ -2162,23 +2166,18 @@
 (define (sum seq . o)
   (if (pair? o)
       (map-sum (car o) seq)
-      (if (vector? seq)
-          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
-            (if (negative? i)
-                (+ sum c)
-                (let* ((elt (vector-ref seq i))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
-                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
-          (let lp ((ls seq) (sum 0) (c 0))
-            (if (null? ls)
-                (+ sum c)
-                (let* ((elt (car ls))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
-                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
+      ((lambda (cell) (+ (car cell) (cdr cell)))
+       (seq-fold (lambda (cell elt)
+                   (let* ((sum (car cell))
+                          (c (cdr cell))
+                          (t (+ sum elt)))
+                     (set-car! cell t)
+                     (set-cdr! cell (if (>= (abs sum) (abs elt))
+                                        (+ c (+ (- sum t) elt))
+                                        (+ c (+ (- elt t) sum))))
+                     cell))
+                 (cons 0 0)
+                 seq))))
 
 ;;> Like \scheme{sum} but sums the \scheme{square}s of the elements.
 (define (square-sum seq . o)
@@ -2202,38 +2201,34 @@
 ;;> sequences and returns the sum of all the results.  It is an error
 ;;> if the sequences don't all have the same length.
 (define (map-sum proc seq . o)
-  (if (pair? o)
-      ;; TODO: more than 2 seqs
-      (let ((len1 (seq-length seq))
-            (len2 (seq-length (car o))))
-        (unless (= len1 len2)
-          (error "sequences must have equal length" seq (car o)))
-        (do ((i 0 (+ i 1))
-             (res (make-running-sum)
-                  (let ((e1 (if (pair? seq1) (car seq1) (seq-ref seq i)))
-                        (e2 (if (pair? seq2) (car seq2) (seq-ref (car o) i))))
-                    (running-sum-inc! res (proc e1 e2))))
-             (seq1 seq (if (pair? seq1) (cdr seq1) '()))
-             (seq2 (car o) (if (pair? seq2) (cdr seq2) '())))
-            ((= i len1)
-             (running-sum-get res))))
-      (if (vector? seq)
-          (let lp ((i (- (vector-length seq) 1)) (sum 0) (c 0))
-            (if (negative? i)
-                (+ sum c)
-                (let* ((elt (proc (vector-ref seq i)))
+  ((lambda (cell) (+ (car cell) (cdr cell)))
+   (if (pair? o)
+       (apply seq-fold
+              (lambda (cell . elts)
+                (let* ((elt (apply proc elts))
+                       (sum (car cell))
+                       (c (cdr cell))
                        (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (- i 1) t (+ c (+ (- sum t) elt)))
-                      (lp (- i 1) t (+ c (+ (- elt t) sum)))))))
-          (let lp ((ls seq) (sum 0) (c 0))
-            (if (null? ls)
-                (+ sum c)
-                (let* ((elt (proc (car ls)))
-                       (t (+ sum elt)))
-                  (if (>= (abs sum) (abs elt))
-                      (lp (cdr ls) t (+ c (+ (- sum t) elt)))
-                      (lp (cdr ls) t (+ c (+ (- elt t) sum))))))))))
+                  (set-car! cell t)
+                  (set-cdr! cell (if (>= (abs sum) (abs elt))
+                                     (+ c (+ (- sum t) elt))
+                                     (+ c (+ (- elt t) sum))))
+                  cell))
+              (cons 0 0)
+              seq
+              o)
+       (seq-fold (lambda (cell elt)
+                   (let* ((elt (proc elt))
+                          (sum (car cell))
+                          (c (cdr cell))
+                          (t (+ sum elt)))
+                     (set-car! cell t)
+                     (set-cdr! cell (if (>= (abs sum) (abs elt))
+                                        (+ c (+ (- sum t) elt))
+                                        (+ c (+ (- elt t) sum))))
+                     cell))
+                 (cons 0 0)
+                 seq))))
 
 ;;> Creates a new running-sum object initialized to \var{init},
 ;;> defaulting to 0.  A running-sum allows you take compute a

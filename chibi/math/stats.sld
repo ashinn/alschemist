@@ -11,10 +11,21 @@
           (scheme set)
           (scheme vector)
           (only (scheme sort) vector-find-median vector-separate!)
-          (srfi 27)
-          (srfi 95) ;; we want generic sort with a key
-          (chibi optional)
+          (srfi 27)  ;; random numbers
+          (srfi 95)  ;; we want generic sort with a key
+          (srfi 231) ;; generalized arrays
+          (chibi optional)  ;; for let-keywords, not (srfi 227)
           )
+  (cond-expand
+   ((and chibi (not portable))
+    (import (chibi assert)))
+   (else
+    (begin
+      (define-syntax assert
+        (syntax-rules ()
+          ((assert expr ...)
+           (if (not (and expr ...))
+               (error "assertion failed" '(and expr ...)))))))))
   (export
    ;; distributions
    distribution? distribution-open? distribution-pure?
