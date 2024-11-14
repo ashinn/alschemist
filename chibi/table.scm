@@ -15,6 +15,13 @@
   ;; TODO: limit the indexes to an integer set
   (indexes table-indexes table-indexes-set!))
 
+;; A shallow copy, sharing the underlying arrays.
+(define (table-copy table)
+  (make-table (table-arrays table)
+              (table-type-specs table)
+              (table-labels table)
+              (table-indexes table)))
+
 (define (table-num-rows table)
   (interval-width (array-domain (vector-ref (table-arrays table) 0)) 0))
 
@@ -32,7 +39,7 @@
   (opt*-lambda (types
                 num-rows
                 (num-cols (vector-length types))
-                (init-array (lambda (a indices) a))
+                (init-array #f)
                 (get-storage-class (lambda (i) generic-storage-class)))
     (let lp ((i 0)
              (storages '())
@@ -41,7 +48,7 @@
        ((= i num-cols)
         (let ((arrays
                (map (lambda (x)
-                      (init-array
+                      ((or init-array (lambda (a indices) a))
                        (make-specialized-array
                         (make-interval (vector num-rows (length (cdr x))))
                         (car x))
@@ -110,27 +117,28 @@
                         (iota (interval-width (array-domain data))
                               (interval-lower-bound (array-domain data) 1)))))
               (vector*->typed-arrays data types)))
-      (lambda (arrays types)
+      (lambda (arrays type-specs)
         (make-table arrays
-                    types
+                    type-specs
                     labels
                     '#())))))
 
 (define (table-resolve-index table row col)
-  (let* ((col-index
-          (if (integer? col)
-              col
-              (vector-index (lambda (x) (eq? x col))
-                            (table-labels table))))
-         (spec (vector-ref (table-type-specs table) col-index)))
-    (values (vector-ref (table-arrays table) (car spec))
-            row
-            (cdr spec))))
+  (let ((col-index
+         (if (integer? col)
+             col
+             (vector-index (lambda (x) (eq? x col))
+                           (table-labels table)))))
+    (if col-index
+        (let ((spec (vector-ref (table-type-specs table) col-index)))
+          (values (vector-ref (table-arrays table) (car spec))
+                  row
+                  (cdr spec)))
+        (error "unknown column" table col))))
 
 (define (table-ref table row col)
   (call-with-values (lambda () (table-resolve-index table row col))
-    (lambda (array row col)
-      (array-ref array row col))))
+    array-ref))
 
 (define (table-set! table row col value)
   (call-with-values (lambda () (table-resolve-index table row col))
@@ -144,6 +152,150 @@
        array
        (make-interval (vector 0 col)
                       (vector (table-num-rows table) (+ col 1)))))))
+
+;; returns a 1-dimensional array of the values
+(define ->series
+  (opt-lambda (obj size (storage generic-storage-class))
+    (cond
+     ((table? obj)
+      (assert (= size (table-num-rows obj)))
+      (array-squeeze (table-column obj 0)))
+     ((array? obj)
+      (assert (= 1 (array-dimension obj))
+              (= size (interval-width (array-domain obj) 0)))
+      (array-to-origin (if (specialized-array? obj) obj (array-copy obj))))
+     ((vector? obj)
+      (assert (= size (vector-length obj)))
+      (vector*->array 1 obj storage))
+     ((or (pair? obj) (null? obj))
+      (assert (= size (length obj)))
+      (list*->array 1 obj storage))
+     (else
+      ;; replicate any other obj to the needed size
+      (make-specialized-array (make-interval (vector size)) storage obj)))))
+
+;;> Sets the column in place without changing the type.
+(define (table-column-set! table column values)
+  (let* ((col (array-to-origin (array-squeeze (table-column table column))))
+         (storage (array-storage-class col))
+         (vals (->series values (interval-width (array-domain col) 0) storage)))
+    (array-assign! col vals)
+    table))
+
+;;> Adjoins a new column - the name must not already exist.
+(define table-column-adjoin!
+  (opt-lambda (table column values (storage generic-storage-class))
+    (assert (symbol? column)
+            (not (vector-index (lambda (x) (eq? x column)) (table-labels table))))
+    (let ((vals (specialized-array-reshape
+                 (->series values (table-num-rows table) storage)
+                 (make-interval (vector (table-num-rows table) 1)))))
+      (table-type-specs-set!
+       table
+       (vector-append (table-type-specs table)
+                      (vector (cons (vector-length (table-arrays table)) 0))))
+      (table-arrays-set! table
+                         (vector-append (table-arrays table) (vector vals)))
+      (table-labels-set! table
+                         (vector-append (table-labels table) (vector column)))
+      table)))
+
+(define (table-column-adjoin table . o)
+  (apply table-column-adjoin! (table-copy table) o))
+
+(define (vector-take vec k)
+  (vector-copy vec 0 (+ k 1)))
+
+(define (vector-drop vec k)
+  (vector-copy vec (+ k 1)))
+
+(define (vector-without-index vec i)
+  (vector-append (vector-take vec (- i 1)) (vector-drop vec i)))
+
+;;> Removes the column from the table.
+(define (table-column-drop! table column)
+  (let ((col-index (if (number? column)
+                       column
+                       (vector-index (lambda (x) (eq? x column))
+                                     (table-labels table)))))
+    (assert (integer? col-index))
+    (table-labels-set!
+     table
+     (vector-without-index (table-labels table) col-index))
+    (table-type-specs-set!
+     table
+     (vector-without-index (table-type-specs table) col-index))
+    table))
+
+(define (table-column-drop table . o)
+  (apply table-column-drop! (table-copy table) o))
+
+;;> Defines the new column, adjoining or overwriting in place as needed.
+(define table-column-define!
+  (opt-lambda (table column values (storage generic-storage-class))
+    (assert (symbol? column))
+    (let ((values (->series values (table-num-rows table) storage)))
+      (cond
+       ((vector-index (lambda (x) (eq? x column)) (table-labels table))
+        => (lambda (col-index)
+             (let* ((array-index
+                     (car (vector-ref (table-type-specs table) col-index)))
+                    (array (vector-ref (table-arrays table) array-index)))
+               (cond
+                ((eq? storage (array-storage-class array))
+                 ;; Same name and storage class, we can set in place.
+                 (table-column-set! table column values storage))
+                (else
+                 ;; The name exists but is incompatible, drop it then
+                 ;; adjoin the new values.
+                 (table-column-adjoin! (table-column-drop! table column)
+                                       column
+                                       values
+                                       storage))))))
+       (else
+        ;; New column name, just adjoin it.
+        (table-column-adjoin! table column values storage))))))
+
+;;> Merges columns of the same storage class and cleans up unused
+;;> arrays.
+(define (table-consolidate! table)
+  (let ((types (vector-map (lambda (col)
+                             (array-storage-class (table-column table col)))
+                           (table-labels table))))
+    (call-with-values (lambda ()
+                        (types->arrays types
+                                       (table-num-rows table)
+                                       (table-num-columns table)))
+      (lambda (arrays type-specs)
+        ;; TODO: reuse the src arrays where possible
+        (vector-for-each
+         (lambda (new-type-spec old-type-spec)
+           (let ((dst-array (vector-ref arrays (car new-type-spec)))
+                 (src-array
+                  (vector-ref (table-arrays table) (car old-type-spec))))
+             (array-assign!
+              (array-to-origin
+               (array-extract
+                dst-array
+                (make-interval (vector 0
+                                       (cdr new-type-spec))
+                               (vector (table-num-rows table)
+                                       (+ (cdr new-type-spec) 1)))))
+              (array-to-origin
+               (array-extract
+                src-array
+                (make-interval (vector 0
+                                       (cdr old-type-spec))
+                               (vector (table-num-rows table)
+                                       (+ (cdr old-type-spec) 1))))))))
+         type-specs
+         (table-type-specs table))
+        (table-arrays-set! table arrays)
+        (table-type-specs-set! table type-specs)
+        table))))
+
+(define (table-consolidate table . o)
+  (apply table-consolidate! (table-copy table) o))
 
 (define (table-column-storage table column)
   (call-with-values (lambda () (table-resolve-index table 0 column))
@@ -242,7 +394,7 @@
 (define (infer-storage? str numeric-storage)
   (cond
    ((string->number str) numeric-storage)
-   ;; TODO: Consider supporting TRUE/FALSE booleans.
+   ;; TODO: Consider supporting dates/times, and TRUE/FALSE as booleans.
    (else generic-storage-class)))
 
 (define (csv-read->storage parser num-cols numeric-storage)
