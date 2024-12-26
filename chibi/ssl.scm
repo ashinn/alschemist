@@ -1,15 +1,14 @@
 
 ;;> A utility to generate the appropriate method for the \var{protocol},
 ;;> as a client unless the optional \var{server?} is true.  \var{Protocol}
-;;> should be one of the symbols 'sslv2-or-v3, 'sslv2, 'sslv3 or 'tls.
+;;> should be one of the symbols 'sslv23 or 'tls.
 
 (define (ssl-method protocol . o)
   (let ((server? (and (pair? o) (car o))))
     (case protocol
-      ((sslv2-or-v3) (if server? (SSLv23_server_method) (SSLv23_client_method)))
-      ((sslv2) (if server? (SSLv2_server_method) (SSLv2_client_method)))
-      ((sslv3) (if server? (SSLv3_server_method) (SSLv3_client_method)))
-      ((tls) (if server? (TLSv1_server_method) (TLSv1_client_method)))
+      ((sslv23 sslv2-or-v3 sslv2 sslv3)
+       (if server? (SSLv23_server_method) (SSLv23_client_method)))
+      ((tls) (if server? (TLS_server_method) (TLS_client_method)))
       (else (error "invalid SSL/TLS connection protocol")))))
 
 ;;> A wrapper around SSL_CTX_new for the given \var{protocol}, as symbol
