@@ -7,36 +7,20 @@
 (define gradient-decay-rate (make-parameter .9))
 (define gradient-stabilizer (make-parameter 1e-8))
 
-;; There are various differences but tentatively using the signature
-;; of The Little Learner, allowing us to orthogonally control aspects
-;; of gradient descent such as stochastic or velocity.
-
-(define (gradient-descent inflate deflate update)
-  (lambda (obj-fn weights)
-    (let lp ((weights (map inflate (map as-dual weights)))
-             (revs 0))
-      (let ((loss (obj-fn (map deflate weights))))
-        (if (or (<= (abs (dual-value loss)) (loss-epsilon))
-                (>= revs (max-learning-iterations)))
-            (map deflate weights)
-            (lp (map update
-                     weights
-                     (gradient loss (map deflate weights)))
-                (+ revs 1)))))))
-
-;; Note at least for now we don't do full rank polymorphism,
-;; preferring to keep signatures simple, so the target should take a
-;; single row, not a batch.
-
 (define (l2-loss target)
   (lambda (xs ys)
     (lambda (weights)
       (.mean
        (array-map (lambda (x y)
                     (let ((pred-y ((target (const x)) weights)))
+                      ;;(write `(pred ,(interval-widths (array-domain x)) => ,(interval-widths (array-domain y)) actual: ,(interval-widths (array-domain (dual-value pred-y))))) (newline)
                       (.square (.- (const y) pred-y))))
                   (array-rows xs)
-                  ys)))))
+                  ;; TODO: more consistent handling of batch vs
+                  ;; non-batch usage
+                  (if (= 1 (array-dimension ys))
+                      ys
+                      (array-rows ys)))))))
 
 (define (sampling-loss expectant xs ys . o)
   (let* ((random-source (if (pair? o) (car o) default-random-source))
@@ -48,10 +32,40 @@
                     (array-select/copy ys 0 indices))
          weights)))))
 
+;; There are various differences but tentatively using the signature
+;; of The Little Learner, allowing us to orthogonally control aspects
+;; of gradient descent such as stochastic or velocity.
+
+(define (gradient-descent inflate deflate update)
+  ;; Ensure the weights are duals and all have a label for debugging.
+  (define (label-weights weights)
+    (let lp ((i 0) (ls weights) (res '()))
+      (cond
+       ((null? ls) (reverse res))
+       ;;((dual-label (car ls)) (lp (+ i 1) (cdr ls) (cons (car ls) res)))
+       (else
+        (let ((label (string->symbol (string-append "w" (number->string i)))))
+          (lp (+ i 1) (cdr ls) (cons (dual-with-label (car ls) label) res)))))))
+  (lambda (obj-fn weights)
+    (let lp ((weights (map inflate (label-weights (map as-dual weights))))
+             (revs 0))
+      (let* ((deflated-weights (label-weights (map deflate weights)))
+             (loss (obj-fn deflated-weights)))
+        (write `(gradient-descent ,revs ,(map dual-label deflated-weights))) (newline)
+        (write `(loss ,(dual-value loss))) (newline)
+        (if (or (<= (abs (dual-value loss)) (loss-epsilon))
+                (>= revs (max-learning-iterations)))
+            deflated-weights
+            (lp (map update
+                     weights
+                     (gradient loss deflated-weights))
+                (+ revs 1)))))))
+
 (define (naked-i w) w)
 (define (naked-d w) w)
 (define (naked-u w g)
   ;; It's OK to keep the duals here but faster to unwrap them.
+  ;;(.- w (.* (learning-rate) g))
   (.- (dual-value w) (.* (learning-rate) (dual-value g))))
 
 (define naked-gradient-descent
@@ -121,15 +135,14 @@
 (define (block fn shape-list . o)
   (make-block fn shape-list (and (pair? o) (car o))))
 
-(define (vector->matrix v)
-  (specialized-array-reshape
-   v
-   (make-interval (vector (interval-width (array-domain v) 0) 1))))
-
 (define (linear t)
+  ;; (write `(linear ,(dual-value t))) (newline)
   (lambda (weights)
-    (.+ (.sum-axis/squeeze (.@ (first weights) (vector->matrix t)))
-        (second weights))))
+    (.+ (.sum-axis/squeeze (.@ (first weights) (.transpose t)))
+        (second weights))
+    ;; (.+ (.@ (first weights) (.transpose t))
+    ;;     (second weights))
+    ))
 
 (define (relu t)
   (lambda (weights)
@@ -180,3 +193,68 @@
 (define (model target weights)
   (lambda (t)
     ((target t) weights)))
+
+(define-syntax grid-search
+  (syntax-rules ()
+    ((grid-search done? ((param val ...) ...) . body)
+     (gridsearch done? 0 () ((param val ...) ...) . body))))
+
+(define (next-params ls params)
+  (let lp ((ls (reverse ls)) (params (reverse params)) (res '()))
+    (cond
+     ((null? ls) (error "out of params"))
+     ((pair? (cdar ls)) (append (reverse (cdr ls)) (cons (cdar ls) res)))
+     (else (lp (cdr ls) (cdr params) (cons (car params) res))))))
+
+(define-syntax gridsearch
+  (syntax-rules ()
+    ((gridsearch done? i (params ...) ((param val ...) . rest) . body)
+     (gridsearch done? (+ i 1) (params ... (param tmp i val ...)) rest . body))
+    ((gridsearch done? next-i ((param tmp i val ...) ...) () . body)
+     (let ((params (list (list val ...) ...)))
+       (let lp ((ls params))
+         (let ((tmp (car (list-ref params i))) ...)
+           (parameterize ((param tmp) ...)
+             (let ((res (begin . body)))
+               (if (done? res)
+                   res
+                   (lp (next-params ls params)))))))))))
+
+(define (array-index-of-max a)
+  (let ((getter (array-getter a))
+        (start (interval-lower-bound (array-domain a) 0))
+        (end (interval-upper-bound (array-domain a) 0)))
+    (let lp ((i (+ start 1))
+             (max-i start)
+             (max-elt (getter start)))
+      (cond
+       ((>= i end)
+        max-i)
+       ((> (getter i) max-elt)
+        (lp (+ i 1) i (getter i)))
+       (else
+        (lp (+ i 1) max-i max-elt))))))
+
+(define (class= a1 a2)
+  (let ((dim (array-dimension a1)))
+    (if (not (= dim (array-dimension a2)))
+        (error "class= dimensions don't match" dim (array-dimension a2)
+               'test: (interval-widths (array-domain a1))
+               'pred: (interval-widths (array-domain a2)))
+        (case dim
+          ((0) (error "not a one-hot-like array" a1))
+          ((1) (if (= (array-index-of-max a1) (array-index-of-max a2)) 1. 0.))
+          (else
+           ;;(write `(class= ,(array->list* (array-curry a1 (- dim 1))) (array->list* (array-curry a2 (- dim 1))))) (newline)
+           (array-copy
+            (array-map class=
+                       (array-curry a1 (- dim 1))
+                       (array-curry a2 (- dim 1)))))))))
+
+(define (accuracy model xs ys)
+  ;;(write `(accuracy)) (newline)
+  (let ((pred-ys (array-decurry (array-map (lambda (row) (dual-value (model row)))
+                                           (array-rows xs)))))
+    ;;(write `(pred-ys: ,pred-ys)) (newline)
+    (/ (array-sum (class= ys pred-ys))
+       (interval-width (array-domain ys) 0))))

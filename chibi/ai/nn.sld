@@ -1,15 +1,15 @@
 
 (define-library (chibi ai nn)
-  (import (scheme base)
+  (import (scheme base) (scheme write) (chibi ast)
           (scheme list)
           (srfi 27)
           (srfi 231)
           (chibi math autodiff)
           (chibi math linalg)
           (chibi math stats))
-  (export linear relu block block? block-fn block-ls
+  (export linear relu block block? block-fn block-ls grid-search
+          accuracy class= init-weights
           block-compose stack-blocks dense-block model linear relu
-          vector->matrix
           gradient-descent rms-gradient-descent adam-gradient-descent
           naked-gradient-descent velocity-gradient-descent
           l2-loss sampling-loss smooth

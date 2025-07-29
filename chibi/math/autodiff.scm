@@ -8,12 +8,12 @@
   dual?
   (value %dual-value)
   (link dual-link)
-  (label dual-label)
+  (label %dual-label)
   (const? dual-const?))
 
 (define (dual value . o)
   (let ((link (if (pair? o) (car o) values))
-        (label (and (pair? o) (pair? (car o)) (cadr o))))
+        (label (and (pair? o) (pair? (cdr o)) (cadr o))))
     (if (dual? value)
         (make-dual (dual-value value)
                    (lambda (self grads)
@@ -30,6 +30,13 @@
   (make-dual value values (and (pair? o) (car o)) #t))
 
 (define (dual-value x) (if (dual? x) (%dual-value x) x))
+
+(define (dual-label x) (and (dual? x) (%dual-label x)))
+
+(define (dual-with-label value label)
+  (if (dual? value)
+      (make-dual (dual-value value) (dual-link value) label (dual-const? value))
+      (make-dual value values label #f)))
 
 (define (array-of-dual? a)
   (and (array? a)
@@ -57,6 +64,39 @@
                         tmp)))
             ...)
        . body))))
+
+(define (dual-format-label x . o)
+  (define (->string x)
+    (cond ((string? x) x)
+          ((symbol? x) (symbol->string x))
+          ((number? x) (number->string x))
+          (else "_")))
+  (let* ((label (if (dual? x) (dual-label x) x))
+         (recurse? (and (pair? o) (car o)))
+         (format-arg (if recurse?
+                         (lambda (x) (dual-format-label x #t))
+                         ->string)))
+    (cond
+     ((pair? label)
+      (if (= 3 (length label))
+          ;; most ops are binary so we format them as infix
+          (string-append
+           (format-arg (cadr label))
+           (->string (car label))
+           (format-arg (car (cddr label))))
+          ;; general ops are formatted as function calls
+          (let ((out (open-output-string)))
+            (write-string (->string (car label)) out)
+            (write-string "(" out)
+            (pair-for-each
+             (lambda (x)
+               (if (not (eq? x (cdr label)))
+                   (write-string "," out))
+               (write-string (format-arg (car x)) out))
+             (cdr label))
+            (write-string ")" out)
+            (get-output-string out))))
+     (else (->string label)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -98,7 +138,8 @@
            ((null? ls)
             v)
            (else
-            (lp (cdr ls) (array-sum-axis v (car ls)))))))
+            (lp (cdr ls)
+                (array-sum-axis v (car ls)))))))
        (else
         (array+ (zeros domain (array-storage-class v))
                 v)))))))
@@ -121,10 +162,16 @@
 (define (gradients-inc! grads d v)
   (assert (dual? d))
   (unless (dual-const? d)
-    (let ((current-grad (hash-table-ref/default grads d #f))
-          (v (if (array? (dual-value d))
-                 (array-un/broadcast v (array-domain (dual-value d)))
-                 v)))
+    (let* ((current-grad (hash-table-ref/default grads d #f))
+           (v (if (promise? v) (force v) v))
+           (v (if (array? (dual-value d))
+                  (array-un/broadcast v (array-domain (dual-value d)))
+                  v)))
+      (define (shape x)
+        (cond ((dual? x) (shape (dual-value x)))
+              ((array? x) (interval-widths (array-domain x)))
+              (else '())))
+      (log-debug 'inc! (dual-format-label d #t) (shape d) '+ (shape v) 'avg: (dual-value (if (array? (dual-value v)) (.mean v) v)))
       (cond
        (current-grad
         (gradients-set! grads d (array+ current-grad v)))
@@ -147,14 +194,17 @@
 (define-syntax define-dual-op
   (syntax-rules ()
     ((define-dual-op (name arg ...) array-op op-name link)
-     (define (name arg ...)
-       (let ((arg (as-dual arg)) ...
-             (op-name (if (or (array-of-dual? (dual-value arg)) ...)
-                          (lambda (arg ...) (array-map name arg ...))
-                          array-op)))
-         (dual
-          (op-name (dual-value arg) ...)
-          link))))))
+     (define name
+       (let ((label (symbol->string 'op-name)))
+         (lambda (arg ...)
+           (let ((arg (as-dual arg)) ...
+                 (op-name (if (or (array-of-dual? (dual-value arg)) ...)
+                              (lambda (arg ...) (array-map name arg ...))
+                              array-op)))
+             (dual
+              (op-name (dual-value arg) ...)
+              link
+              (dual-op-label label arg ...)))))))))
 
 (define-dual-op (dual+ a b) array+ +
   (lambda (self grads)
@@ -210,23 +260,32 @@
               (delta (if (array? value)
                          (array* (array- 1.0 (array-square value)) grad)
                          (array* (- 1.0 (square value)) grad))))
-         (gradients-inc! grads a delta))))))
+         (gradients-inc! grads a delta)))
+     (dual-op-label "tanh" a))))
 
 (define (dual-rectify a)
-  (dual
-   (array-rectify (dual-value a))
-   (lambda (self grads)
-     (gradients-inc! grads a (gradients-ref grads self)))))
+  (let ((res (array-rectify (dual-value a)))
+        (non-zeros (array-map (lambda (x) (if (zero? x) 0 1)) (dual-value a))))
+    (dual
+     res
+     (lambda (self grads)
+       (gradients-inc! grads a (array-mul-elements non-zeros (gradients-ref grads self))))
+     (dual-op-label "rectify" a))))
 
 (define (dual-sum a)
   (let ((a (as-dual a)))
     (dual
      (if (array-of-dual? (dual-value a))
-         (array-fold-left .+ 0 (dual-value a))
+         (array-fold-left
+          (lambda (acc x)
+            (.+ (if (array? (dual-value x)) (dual-sum x) x) acc))
+          0
+          (dual-value a))
          (array-sum (dual-value a)))
      (lambda (self grads)
        (let ((grad (gradients-ref grads self)))
-         (gradients-inc! grads a grad))))))
+         (gradients-inc! grads a grad)))
+     (dual-op-label "sum" a))))
 
 (define (dual-sum-axis a . o)
   (let* ((a (as-dual a))
@@ -243,10 +302,10 @@
       (error "dual-sum-axis not yet supported on higher dimensions" a))
      ((= axis 1)
       ;; (m, n) x (n, 1) => (m, 1)
-      (dual-matmul a (ones (make-interval (vector width 1)) storage)))
+      (dual-matmul a (const (ones (make-interval (vector width 1)) storage))))
      (else
       ;; (1, m) x (m, n) => (1, n)
-      (dual-matmul (ones (make-interval (vector 1 width)) storage) a)))))
+      (dual-matmul (const (ones (make-interval (vector 1 width)) storage)) a)))))
 
 (define (dual-sum-axis/squeeze a . o)
   (let* ((axis (if (pair? o) (car o) (- (array-dimension (dual-value a)) 1)))
@@ -256,7 +315,10 @@
      (lambda (self grads)
        (let ((grad (gradients-ref grads self)))
          ;; The squeezed gradient should broadcast correctly.
-         (gradients-inc! grads res grad))))))
+         (gradients-inc! grads res grad)
+         (gradients-inc! grads a grad)
+         ))
+     (dual-op-label "sum-axis" a))))
 
 (define (dual-mean a)
   (dual/ (dual-sum a)
@@ -264,13 +326,62 @@
 
 (define (dual-matmul a b)
   (let ((a (as-dual a)) (b (as-dual b)))
-    (dual
-     (array-mul (dual-value a) (dual-value b))
-     (lambda (self grads)
-       (gradients-inc! grads a (array-mul (gradients-ref grads self)
-                                          (array-transpose (dual-value b))))
-       (gradients-inc! grads b (array-mul (array-transpose (dual-value a))
-                                          (gradients-ref grads self)))))))
+    ;; M x K @ K x N = M x N
+    ;; (write `(.@ ,(pp a) ,(pp b))) (newline)
+    (let ((res (array-mul (dual-value a) (dual-value b))))
+      (dual
+       res
+       (lambda (self grads)
+         ;; (write `(.@ grad)) (newline)
+         ;; The incoming gradient can un/broadcast to M x N.
+         (let ((grad (array-un/broadcast
+                      (dual-value (gradients-ref grads self))
+                      (array-domain res))))
+           ;; (write `(.@ a += ,(pp grad) ,(pp (array-transpose (dual-value b))))) (newline)
+           ;; B' = N x K
+           ;; M x N @ N x K => M x K, the A gradient
+           (gradients-inc! grads a (delay (array-mul
+                                           grad
+                                           (array-transpose (dual-value b)))))
+           ;; (write `(.@ b += ,(pp (array-transpose (dual-value a))) ,(pp grad))) (newline)
+           ;; A' = K x M
+           ;; K x M @ M x N => K x N, the B gradient
+           (gradients-inc! grads b (delay (array-mul
+                                           (array-transpose (dual-value a))
+                                           grad)))
+           ;; (write `(.@ done)) (newline)
+           ))
+       (dual-op-label "@" a b)))))
+
+(define (dual-reshape a domain)
+  (let ((storage (if (specialized-array? a)
+                     (array-storage-class a)
+                     generic-storage-class)))
+    (dual (specialized-array-reshape (dual-value a) domain)
+          (lambda (self grads)
+            (let* ((reshaped-grad (array+ (zeros domain storage)
+                                          (gradients-ref grads self)))
+                   (grad (specialized-array-reshape reshaped-grad
+                                                    (array-domain (dual-value a))
+                                                    #t)))
+              (gradients-inc! grads a grad)))
+          (dual-op-label "reshape" a))))
+
+(define (dual-transpose a)
+  (case (array-dimension (dual-value a))
+    ((1)
+     (dual-reshape
+      a
+      (make-interval (vector (interval-width (array-domain (dual-value a)) 0) 1))))
+    ((2)
+     (dual (array-transpose (dual-value a))
+           (lambda (self grads)
+             (let ((grad (array-transpose (gradients-ref grads self))))
+               (gradients-inc! grads a grad)))
+           (dual-op-label "transpose" a)))
+    (else
+     (error "can only transpose arrays of dimensions 1 or 2 but got"
+            (array-dimension (dual-value a))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -295,5 +406,7 @@
 (define .mean dual-mean)
 (define .sum-axis dual-sum-axis)
 (define .sum-axis/squeeze dual-sum-axis/squeeze)
+(define .reshape dual-reshape)
+(define .transpose dual-transpose)
 (define (.square x) (.expt x 2))
 (define (.dot x y) (.sum (.* x y)))

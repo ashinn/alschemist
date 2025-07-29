@@ -269,7 +269,10 @@
                (or (array-storage-class a) generic-storage-class)))
          (setter (array-setter res)))
     (assert (= (- m (vector-ref a-lo 1))
-               (- (vector-ref b-hi 0) (vector-ref b-lo 0))))
+               (- (vector-ref b-hi 0) (vector-ref b-lo 0)))
+            "incompatible domains for matrix multiplication"
+            (interval-widths (array-domain a))
+            (interval-widths (array-domain b)))
     (do ((i (vector-ref a-lo 0) (+ i 1)))
         ((= i n) res)
       (do ((k (vector-ref b-lo 0) (+ k 1)))

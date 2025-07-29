@@ -1,0 +1,26 @@
+
+(define-library (chibi math array-test-utils)
+  (import (scheme base) (scheme write)
+          (srfi 1) (srfi 231)
+          (chibi math linalg) (chibi test))
+  (export tensor array-approx= test-array)
+  (begin
+    (define (depth ls)
+      (if (list? ls) (+ 1 (depth (car ls))) 0))
+    (define (tensor nested-ls . o)
+      (list*->array (depth nested-ls)
+                    nested-ls
+                    (if (pair? o) (car o) f32-storage-class)))
+    (define (array-approx= a . arrays)
+      (and (array? a)
+           (every array? arrays)
+           (every (lambda (b) (interval= (array-domain a) (array-domain b)))
+                  arrays)
+           (apply array-every test-equal? a arrays)))
+    (define (write-array->string a)
+      (write-array a #f))
+    (define-syntax test-array
+      (syntax-rules ()
+        ((test-array expected expr)
+         (parameterize ((current-test-value-formatter write-array->string))
+           (test-equal array-approx= expected expr)))))))
