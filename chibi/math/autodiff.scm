@@ -1,42 +1,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;> \section{Duals}
-
-(define-record-type Dual
-  (make-dual value link label const?)
-  dual?
-  (value %dual-value)
-  (link dual-link)
-  (label %dual-label)
-  (const? dual-const?))
-
-(define (dual value . o)
-  (let ((link (if (pair? o) (car o) values))
-        (label (and (pair? o) (pair? (cdr o)) (cadr o))))
-    (if (dual? value)
-        (make-dual (dual-value value)
-                   (lambda (self grads)
-                     ((dual-link value) self grads)
-                     (link self grads))
-                   label
-                   #f)
-        (make-dual value link label #f))))
-
-(define (as-dual value)
-  (if (dual? value) value (dual value)))
-
-(define (const value . o)
-  (make-dual value values (and (pair? o) (car o)) #t))
-
-(define (dual-value x) (if (dual? x) (%dual-value x) x))
-
-(define (dual-label x) (and (dual? x) (%dual-label x)))
-
-(define (dual-with-label value label)
-  (if (dual? value)
-      (make-dual (dual-value value) (dual-link value) label (dual-const? value))
-      (make-dual value values label #f)))
+;; Array Utilities
 
 (define (array-of-dual? a)
   (and (array? a)
@@ -45,78 +10,26 @@
          (or (dual? elt)
              (array-of-dual? elt)))))
 
-(define-syntax let-duals
-  (syntax-rules ()
-    ((let-duals ((name expr) ...) . body)
-     (let ((name (let ((tmp expr))
-                   (if (or (number? tmp) (array? tmp))
-                       (dual tmp values 'name)
-                       tmp)))
-           ...)
-       . body))))
-
-(define-syntax let*-duals
-  (syntax-rules ()
-    ((let*-duals ((name expr) ...) . body)
-     (let* ((name (let ((tmp expr))
-                    (if (or (number? tmp) (array? tmp))
-                        (dual tmp values 'name)
-                        tmp)))
-            ...)
-       . body))))
-
-(define (dual-format-label x . o)
-  (define (->string x)
-    (cond ((string? x) x)
-          ((symbol? x) (symbol->string x))
-          ((number? x) (number->string x))
-          (else "_")))
-  (let* ((label (if (dual? x) (dual-label x) x))
-         (recurse? (and (pair? o) (car o)))
-         (format-arg (if recurse?
-                         (lambda (x) (dual-format-label x #t))
-                         ->string)))
-    (cond
-     ((pair? label)
-      (if (= 3 (length label))
-          ;; most ops are binary so we format them as infix
-          (string-append
-           (format-arg (cadr label))
-           (->string (car label))
-           (format-arg (car (cddr label))))
-          ;; general ops are formatted as function calls
-          (let ((out (open-output-string)))
-            (write-string (->string (car label)) out)
-            (write-string "(" out)
-            (pair-for-each
-             (lambda (x)
-               (if (not (eq? x (cdr label)))
-                   (write-string "," out))
-               (write-string (format-arg (car x)) out))
-             (cdr label))
-            (write-string ")" out)
-            (get-output-string out))))
-     (else (->string label)))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Array Utilities
-
 (define (axes-to-unbroadcast dest from)
-  (assert (= (interval-dimension dest) (interval-dimension from)))
-  (let ((dim (interval-dimension dest)))
-    (let lp ((i 0) (res '()))
+  (assert (<= (interval-dimension dest) (interval-dimension from)))
+  (let* ((dim (interval-dimension from))
+         (limit (- dim (interval-dimension dest))))
+    (let lp ((i (- dim 1)) (res '()))
       (cond
-       ((= i dim)
-        (reverse res))
-       ((= (interval-width dest i) (interval-width from i))
-        (lp (+ i 1) res))
-       ((= (interval-width dest i) 1)
-        (lp (+ i 1) (cons i res)))
+       ((negative? i)
+        res)
+       ((< i limit)
+        (lp (- i 1) (cons i res)))
+       ((= (interval-width dest (- i limit)) (interval-width from i))
+        (lp (- i 1) res))
+       ((= (interval-width dest (- i limit)) 1)
+        (lp (- i 1) (cons i res)))
        ((= (interval-width from i) 1)
-        (lp (+ i 1) res))
+        (lp (- i 1) res))
        (else
-        (error "can't (un)broadcast" dest from))))))
+        (error "can't (un)broadcast"
+               (interval-widths dest)
+               (interval-widths from)))))))
 
 ;; If the array is the result of broadcasting from the domain, narrow
 ;; it back down by summing the broadcast axes, otherwise broadcast it
@@ -129,13 +42,22 @@
     v)
    (else
     (let ((v (if (specialized-array? v) v (array-copy v))))
+      (dbg "unbroadcast: " v " => " domain)
       (cond
-       ((and (< (interval-volume domain)
-                (interval-volume (array-domain v))))
+       ((and (= 1 (interval-dimension domain))
+             (= 2 (interval-dimension (array-domain v)))
+             (= (interval-width domain 0)
+                (interval-width (array-domain v) 1)))
+        (let ((res (array-sum-axis/squeeze v 0)))
+          (dbg "unbroadcast result: " res)
+          res))
+       ((<= (interval-volume domain)
+            (interval-volume (array-domain v)))
         (let lp ((ls (axes-to-unbroadcast domain (array-domain v)))
                  (v v))
           (cond
            ((null? ls)
+            (dbg "unbroadcast result: " v)
             v)
            (else
             (lp (cdr ls)
@@ -159,6 +81,11 @@
 (define (gradients-set! grads d v)
   (hash-table-set! grads d v))
 
+(define (shape-of x)
+  (cond ((dual? x) (shape-of (dual-value x)))
+        ((array? x) (interval-widths (array-domain x)))
+        (else '())))
+
 (define (gradients-inc! grads d v)
   (assert (dual? d))
   (unless (dual-const? d)
@@ -167,11 +94,9 @@
            (v (if (array? (dual-value d))
                   (array-un/broadcast v (array-domain (dual-value d)))
                   v)))
-      (define (shape x)
-        (cond ((dual? x) (shape (dual-value x)))
-              ((array? x) (interval-widths (array-domain x)))
-              (else '())))
-      (log-debug 'inc! (dual-format-label d #t) (shape d) '+ (shape v) 'avg: (dual-value (if (array? (dual-value v)) (.mean v) v)))
+      (dbg
+       "inc! " (dual-format-label d #t) " " (shape-of d) " + " (shape-of v)
+       " avg: " (dual-value (if (array? (dual-value v)) (.mean v) v)))
       (cond
        (current-grad
         (gradients-set! grads d (array+ current-grad v)))
@@ -328,6 +253,7 @@
   (let ((a (as-dual a)) (b (as-dual b)))
     ;; M x K @ K x N = M x N
     ;; (write `(.@ ,(pp a) ,(pp b))) (newline)
+    (dbg `(@ ,a ,b))
     (let ((res (array-mul (dual-value a) (dual-value b))))
       (dual
        res

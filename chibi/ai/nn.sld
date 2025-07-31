@@ -6,7 +6,8 @@
           (srfi 231)
           (chibi math autodiff)
           (chibi math linalg)
-          (chibi math stats))
+          (chibi math stats)
+          (chibi math debug))
   (export linear relu block block? block-fn block-ls grid-search
           accuracy class= init-weights
           block-compose stack-blocks dense-block model linear relu

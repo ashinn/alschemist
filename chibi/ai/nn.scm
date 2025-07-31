@@ -7,29 +7,37 @@
 (define gradient-decay-rate (make-parameter .9))
 (define gradient-stabilizer (make-parameter 1e-8))
 
+;; If we have a 1-dimensional array, we can assume that each element
+;; is a scalar row and not bother artificially wrapping the elements
+;; in a 0-dimensional array.
+;; (define (flat-array-rows a)
+;;   (if (= 1 (array-dimension a))
+;;       a
+;;       (array-rows a)))
+
 (define (l2-loss target)
   (lambda (xs ys)
     (lambda (weights)
-      (.mean
-       (array-map (lambda (x y)
-                    (let ((pred-y ((target (const x)) weights)))
-                      ;;(write `(pred ,(interval-widths (array-domain x)) => ,(interval-widths (array-domain y)) actual: ,(interval-widths (array-domain (dual-value pred-y))))) (newline)
-                      (.square (.- (const y) pred-y))))
-                  (array-rows xs)
-                  ;; TODO: more consistent handling of batch vs
-                  ;; non-batch usage
-                  (if (= 1 (array-dimension ys))
-                      ys
-                      (array-rows ys)))))))
+      ;; (array-map (lambda (x y)
+      ;;              (let ((pred-y ((target (const x)) weights)))
+      ;;                ;;(write `(pred ,(interval-widths (array-domain x)) => ,(interval-widths (array-domain y)) actual: ,(interval-widths (array-domain (dual-value pred-y))))) (newline)
+      ;;                (.square (.- (const y) pred-y))))
+      ;;            (flat-array-rows xs)
+      ;;            (flat-array-rows ys))
+      (let ((pred-ys ((target (const xs)) weights)))
+        (dbg "pred-ys: " pred-ys)
+        (.mean (.sum-axis (.square (.- pred-ys ys))))))))
 
 (define (sampling-loss expectant xs ys . o)
   (let* ((random-source (if (pair? o) (car o) default-random-source))
          (n (interval-width (array-domain xs) 0))
          (dist (discrete-uniform-distribution 0 (- n 1) 1 random-source)))
     (lambda (weights)
-      (let ((indices (random-multi-sample (learning-batch-size) dist)))
-        ((expectant (array-select/copy xs 0 indices)
-                    (array-select/copy ys 0 indices))
+      (let* ((indices (random-multi-sample (learning-batch-size) dist))
+             (sample-xs (array-select/copy xs 0 indices))
+             (sample-ys (array-select/copy ys 0 indices)))
+        (dbg "sample-xs: " sample-xs " sample-ys: " sample-ys)
+        ((expectant sample-xs sample-ys)
          weights)))))
 
 ;; There are various differences but tentatively using the signature
@@ -46,27 +54,41 @@
        (else
         (let ((label (string->symbol (string-append "w" (number->string i)))))
           (lp (+ i 1) (cdr ls) (cons (dual-with-label (car ls) label) res)))))))
+  ;; (define (preserve-scalar-weights update)
+  ;;   (lambda (weight gradient)
+  ;;     (let ((new-weight (update weight gradient)))
+  ;;       (if (and (number? (dual-value weight))
+  ;;                (array? (dual-value new-weight))
+  ;;                (= 1 (interval-volume (array-domain (dual-value new-weight)))))
+  ;;           (begin
+  ;;             (write `(unwrapping ,(array-dimension (dual-value new-weight)) : ,(array->list* (dual-value new-weight)) => ,(array-first (dual-value new-weight)))) (newline)
+  ;;             (array-first (dual-value new-weight)))
+  ;;           new-weight))))
   (lambda (obj-fn weights)
     (let lp ((weights (map inflate (label-weights (map as-dual weights))))
              (revs 0))
-      (let* ((deflated-weights (label-weights (map deflate weights)))
-             (loss (obj-fn deflated-weights)))
-        (write `(gradient-descent ,revs ,(map dual-label deflated-weights))) (newline)
-        (write `(loss ,(dual-value loss))) (newline)
-        (if (or (<= (abs (dual-value loss)) (loss-epsilon))
-                (>= revs (max-learning-iterations)))
+      (let ((deflated-weights (label-weights (map deflate weights))))
+        (if (>= revs (max-learning-iterations))
             deflated-weights
-            (lp (map update
-                     weights
-                     (gradient loss deflated-weights))
-                (+ revs 1)))))))
+            (let ((loss (obj-fn deflated-weights)))
+              (info "gradient-descent " (number->string revs) " "
+                    (map dual-label deflated-weights))
+              (info "loss: " (dual-value loss))
+              (if (<= (abs (dual-value loss)) (loss-epsilon))
+                  deflated-weights
+                  (lp (map update
+                           weights
+                           (gradient loss deflated-weights))
+                      (+ revs 1)))))))))
 
 (define (naked-i w) w)
 (define (naked-d w) w)
 (define (naked-u w g)
   ;; It's OK to keep the duals here but faster to unwrap them.
   ;;(.- w (.* (learning-rate) g))
-  (.- (dual-value w) (.* (learning-rate) (dual-value g))))
+  (let ((res (.- (dual-value w) (.* (learning-rate) (dual-value g)))))
+    (dbg "update: " w " => " `(- ,w (* ,(learning-rate) ,g)) " => " res)
+    res))
 
 (define naked-gradient-descent
   (gradient-descent naked-i naked-d naked-u))
@@ -138,10 +160,10 @@
 (define (linear t)
   ;; (write `(linear ,(dual-value t))) (newline)
   (lambda (weights)
-    (.+ (.sum-axis/squeeze (.@ (first weights) (.transpose t)))
-        (second weights))
-    ;; (.+ (.@ (first weights) (.transpose t))
+    ;; (.+ (.sum-axis/squeeze (.@ (first weights) (.transpose t)))
     ;;     (second weights))
+    (.+ (.@ t (.transpose (first weights)))
+        (second weights))
     ))
 
 (define (relu t)
@@ -252,9 +274,7 @@
                        (array-curry a2 (- dim 1)))))))))
 
 (define (accuracy model xs ys)
-  ;;(write `(accuracy)) (newline)
-  (let ((pred-ys (array-decurry (array-map (lambda (row) (dual-value (model row)))
-                                           (array-rows xs)))))
-    ;;(write `(pred-ys: ,pred-ys)) (newline)
+  (let ((pred-ys (dual-value (model xs))))
+    (dbg "pred-ys: " pred-ys)
     (/ (array-sum (class= ys pred-ys))
        (interval-width (array-domain ys) 0))))

@@ -2124,10 +2124,11 @@
 
 ;;> Utility to return a random value matching a given \var{cdf}, with
 ;;> \var{statistics} used to determine the domain.
-(define (inverse-transform-random cdf statistics)
-  (let ((inverse-cdf (inverse-transform-cdf cdf statistics)))
+(define (inverse-transform-random cdf statistics . o)
+  (let ((rand-real (if (pair? o) (car o) random-real))
+        (inverse-cdf (inverse-transform-cdf cdf statistics)))
     (lambda ()
-      (inverse-cdf (random-real)))))
+      (inverse-cdf (rand-real)))))
 
 ;;> Returns a procedure of one value which approximates the derivative
 ;;> of \var{f}.
