@@ -6,8 +6,16 @@
           (srfi 231)
           (chibi math dual)
           (chibi show shared))
-  (export show* written-array)
+  (export show* written-array array-precision)
   (begin
+    (define (contains-inexact? x)
+      (if (number? x)
+          (inexact? x)
+          (and (pair? x) (contains-inexact? (car x)))))
+
+    (define array-precision
+      (make-state-variable 'array-precision #f #f))
+
     (define array-type-tag
       (let ((storage-tags
              `((,u1-storage-class . "u1")
@@ -31,14 +39,14 @@
 
     ;; TODO: need better factoring to override the output for one type
     (define (write-array-with-shares obj shares)
-      (fn ((orig-radix radix) precision)
+      (fn ((orig-radix radix) (orig-precision precision) array-precision)
         (let ((write-number
                ;; Shortcut for numeric values.  Try to rely on
                ;; number->string for standard radixes and no precision,
                ;; otherwise fall back on numeric but resetting to a usable
                ;; radix.
                (cond
-                ((and (not precision)
+                ((and (not orig-precision)
                       (assv orig-radix
                             '((16 . "#x") (10 . "") (8 . "#o") (2 . "#b"))))
                  => (lambda (cell)
@@ -92,7 +100,11 @@
                  (each "#" (number->string (array-dimension obj))
                        (array-type-tag obj)
                        (if (zero? (array-dimension obj)) " " "")
-                       (array->list* obj)))
+                       (let ((ls (array->list* obj)))
+                         (if (and (contains-inexact? ls) array-precision)
+                             (with ((precision array-precision))
+                               ls)
+                             ls))))
                 ((dual? obj)
                  (each "{Dual " (dual-value obj) "}"))
                 ((number? obj)

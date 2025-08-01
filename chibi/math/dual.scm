@@ -62,7 +62,7 @@
           ((symbol? x) (symbol->string x))
           ((number? x) (number->string x))
           (else "_")))
-  (let* ((label (if (dual? x) (dual-label x) x))
+  (let* ((label (or (and (dual? x) (dual-label x)) x))
          (recurse? (and (pair? o) (car o)))
          (format-arg (if recurse?
                          (lambda (x) (dual-format-label x #t))
