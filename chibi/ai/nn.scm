@@ -7,23 +7,10 @@
 (define gradient-decay-rate (make-parameter .9))
 (define gradient-stabilizer (make-parameter 1e-8))
 
-;; If we have a 1-dimensional array, we can assume that each element
-;; is a scalar row and not bother artificially wrapping the elements
-;; in a 0-dimensional array.
-;; (define (flat-array-rows a)
-;;   (if (= 1 (array-dimension a))
-;;       a
-;;       (array-rows a)))
-
+;; aka MSE
 (define (l2-loss target)
   (lambda (xs ys)
     (lambda (weights)
-      ;; (array-map (lambda (x y)
-      ;;              (let ((pred-y ((target (const x)) weights)))
-      ;;                ;;(write `(pred ,(interval-widths (array-domain x)) => ,(interval-widths (array-domain y)) actual: ,(interval-widths (array-domain (dual-value pred-y))))) (newline)
-      ;;                (.square (.- (const y) pred-y))))
-      ;;            (flat-array-rows xs)
-      ;;            (flat-array-rows ys))
       (let ((pred-ys ((target (const xs)) weights)))
         (dbg "pred-ys: " pred-ys)
         (.mean (.sum-axis (.square (.- pred-ys ys))))))))
@@ -54,26 +41,16 @@
        (else
         (let ((label (string->symbol (string-append "w" (number->string i)))))
           (lp (+ i 1) (cdr ls) (cons (dual-with-label (car ls) label) res)))))))
-  ;; (define (preserve-scalar-weights update)
-  ;;   (lambda (weight gradient)
-  ;;     (let ((new-weight (update weight gradient)))
-  ;;       (if (and (number? (dual-value weight))
-  ;;                (array? (dual-value new-weight))
-  ;;                (= 1 (interval-volume (array-domain (dual-value new-weight)))))
-  ;;           (begin
-  ;;             (write `(unwrapping ,(array-dimension (dual-value new-weight)) : ,(array->list* (dual-value new-weight)) => ,(array-first (dual-value new-weight)))) (newline)
-  ;;             (array-first (dual-value new-weight)))
-  ;;           new-weight))))
   (lambda (obj-fn weights)
     (let lp ((weights (map inflate (label-weights (map as-dual weights))))
              (revs 0))
-      (let ((deflated-weights (label-weights (map deflate weights))))
+      (let ((deflated-weights (map deflate weights)))
         (if (>= revs (max-learning-iterations))
             deflated-weights
             (let ((loss (obj-fn deflated-weights)))
               (info "gradient-descent " (number->string revs) " "
-                    (map dual-label deflated-weights))
-              (info "loss: " (dual-value loss))
+                    (map dual-label deflated-weights)
+                    " loss: " (dual-value loss))
               (if (<= (abs (dual-value loss)) (loss-epsilon))
                   deflated-weights
                   (lp (map update
@@ -87,8 +64,9 @@
   ;; It's OK to keep the duals here but faster to unwrap them.
   ;;(.- w (.* (learning-rate) g))
   (let ((res (.- (dual-value w) (.* (learning-rate) (dual-value g)))))
-    (dbg "update: " w " => " `(- ,w (* ,(learning-rate) ,g)) " => " res)
-    res))
+    (dbg "update: " (dual-label w) " => " `(- ,w (* ,(learning-rate) ,g))
+         " => " res)
+    (dual-with-label res (dual-label w))))
 
 (define naked-gradient-descent
   (gradient-descent naked-i naked-d naked-u))
@@ -100,7 +78,8 @@
 (define (velocity-u w g)
   (let ((v (.- (.* (velocity-retained) (dual-value (cadr w)))
                (.* (learning-rate) (dual-value g)))))
-    (list (as-dual (.+ (dual-value (car w)) v))
+    (list (dual-with-label (as-dual (.+ (dual-value (car w)) v))
+                           (dual-label (cadr w)))
           (dual-value v))))
 
 (define velocity-gradient-descent
@@ -120,8 +99,9 @@
                     (array-square (dual-value g))))
          (a (array/ (learning-rate)
                     (array+ (array-sqrt r) (gradient-stabilizer)))))
-    (list (as-dual (array- (dual-value (car w))
-                           (array* a (dual-value g))))
+    (list (dual-with-label (as-dual (array- (dual-value (car w))
+                                            (array* a (dual-value g))))
+                           (dual-label (car w)))
           r)))
 
 (define rms-gradient-descent
@@ -139,8 +119,9 @@
          (a (array/ (learning-rate)
                     (array+ (array-sqrt r) (gradient-stabilizer))))
          (v (smooth (velocity-retained) (cadr w) g)))
-    (list (as-dual (array- (dual-value (car w))
-                           (array* a (dual-value g))))
+    (list (dual-with-label (as-dual (array- (dual-value (car w))
+                                            (array* a (dual-value g))))
+                           (dual-label (car w)))
           v
           r)))
 
@@ -158,13 +139,9 @@
   (make-block fn shape-list (and (pair? o) (car o))))
 
 (define (linear t)
-  ;; (write `(linear ,(dual-value t))) (newline)
   (lambda (weights)
-    ;; (.+ (.sum-axis/squeeze (.@ (first weights) (.transpose t)))
-    ;;     (second weights))
     (.+ (.@ t (.transpose (first weights)))
-        (second weights))
-    ))
+        (second weights))))
 
 (define (relu t)
   (lambda (weights)

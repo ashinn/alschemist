@@ -13,7 +13,7 @@
         rs))
     (define (line x)
       (lambda (weights)
-        (.+ (.* x (list-ref weights 0))
+        (.+ (.@ x (.transpose (list-ref weights 0)))
             (list-ref weights 1))))
     (define (plane x)
       (lambda (weights)
@@ -23,18 +23,18 @@
       (test-begin "(chibi ai nn)")
       (let ((line-xs (tensor '((2.) (1.) (4.) (3.))))
             (line-ys (tensor '((1.8) (1.2) (4.2) (3.3)))))
-        (test 8.3025 ;; 33.21
+        (test 8.3025 ;; 33.21 for sum instead of mean
             (dual-value
              (((l2-loss line) line-xs line-ys)
-              (list 0. 0.))))
-        (test 1.3801626 ;; 5.52
+              (list (tensor '(0.)) (tensor '(0.))))))
+        (test 1.3801626 ;; 5.52 for sum instead of mean
             (dual-value
              (((l2-loss line) line-xs line-ys)
-              (list 0.6263 0.))))
+              (list (tensor '(0.6263)) (tensor '(0.))))))
         (parameterize ((max-learning-iterations 25)
                        (current-test-epsilon 1.))
           (let ((weights (naked-gradient-descent
-                          ((l2-loss plane) line-xs line-ys)
+                          ((l2-loss line) line-xs line-ys)
                           (list (tensor '(0.)) 0.))))
             (test-array (tensor '(1.05)) (dual-value (first weights)))
             (test 1.87e-6 (dual-value (second weights))))))
@@ -44,7 +44,6 @@
                                 (2. 3.91)
                                 (3. 6.13)
                                 (4. 8.09))))
-            ;;(plane-ys (tensor '((13.99) (15.99) (18.) (22.4) (30.2) (37.94))))
             (plane-ys (tensor '((13.99) (15.99) (18.) (22.4) (30.2) (37.94)))))
         (parameterize ((max-learning-iterations 25)
                        (current-test-epsilon 1.))
@@ -116,11 +115,11 @@
             (layer3 (dense-block 45 26)))
         (let ((block (stack-blocks (list layer1 layer2 layer3))))
           (test '((64 32)
-                  (64)  ; 1
+                  (64)
                   (45 64)
-                  (45)  ; 1
+                  (45)
                   (26 45)
-                  (26)) ; 1
+                  (26))
               (block-ls block))))
       (test 1. (class= (tensor '(0. 1. 0.)) (tensor '(0.1 0.8 0.1))))
       (test 0. (class= (tensor '(0. 0. 1.)) (tensor '(0.1 0.8 0.1))))

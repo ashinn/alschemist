@@ -93,10 +93,8 @@
            (v (if (promise? v) (force v) v))
            (v (if (array? (dual-value d))
                   (array-un/broadcast v (array-domain (dual-value d)))
-                  v)))
-      (dbg
-       "inc! " (dual-format-label d #t) " " (shape-of d) " + " (shape-of v)
-       " avg: " (dual-value (if (array? (dual-value v)) (.mean v) v)))
+                  (array-sum (dual-value v)))))
+      (dbg/trace "inc! " (dual-format-label d #t) " = " current-grad " + " v)
       (cond
        (current-grad
         (gradients-set! grads d (array+ current-grad v)))
@@ -190,11 +188,13 @@
 
 (define (dual-rectify a)
   (let ((res (array-rectify (dual-value a)))
-        (non-zeros (array-map (lambda (x) (if (zero? x) 0 1)) (dual-value a))))
+        (non-zeros (array-map (lambda (x) (if (<= x 0.) 0. 1.)) (dual-value a))))
     (dual
      res
      (lambda (self grads)
-       (gradients-inc! grads a (array-mul-elements non-zeros (gradients-ref grads self))))
+       (let* ((grad (gradients-ref grads self))
+              (rectified-grad (array-mul-elements non-zeros grad)))
+         (gradients-inc! grads a rectified-grad)))
      (dual-op-label "rectify" a))))
 
 (define (dual-sum a)
@@ -240,9 +240,7 @@
      (lambda (self grads)
        (let ((grad (gradients-ref grads self)))
          ;; The squeezed gradient should broadcast correctly.
-         (gradients-inc! grads res grad)
-         (gradients-inc! grads a grad)
-         ))
+         (gradients-inc! grads a grad)))
      (dual-op-label "sum-axis" a))))
 
 (define (dual-mean a)
@@ -253,7 +251,6 @@
   (let ((a (as-dual a)) (b (as-dual b)))
     ;; M x K @ K x N = M x N
     ;; (write `(.@ ,(pp a) ,(pp b))) (newline)
-    (dbg `(@ ,a ,b))
     (let ((res (array-mul (dual-value a) (dual-value b))))
       (dual
        res
