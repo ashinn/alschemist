@@ -8,7 +8,7 @@
           (chibi math linalg)
           (chibi math stats)
           (chibi math debug))
-  (export linear relu block block? block-fn block-ls grid-search
+  (export linear relu block block? block-fn block-ls block-name grid-search
           accuracy class= init-weights
           block-compose stack-blocks dense-block model linear relu
           gradient-descent rms-gradient-descent adam-gradient-descent

@@ -161,7 +161,8 @@
     (length (block-ls ba)))
    (append
     (block-ls ba)
-    (block-ls bb))))
+    (block-ls bb))
+   `(compose ,(length (block-ls ba)) ,(block-name ba) ,(block-name bb))))
 
 (define (flip f) (lambda (a b) (f b a)))
 
@@ -171,7 +172,8 @@
 (define (dense-block n m)
   (block relu
          (list (list m n)
-               (list m))))
+               (list m))
+         'relu))
 
 (define (init-weights shapes)
   (map init-shape shapes))
