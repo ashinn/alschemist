@@ -12,8 +12,8 @@
 
 (define-state-variables
   expression? return? non-spaced-ops? no-wrap?
-  expr-writer indent-space
-  indent default-type dot op)
+  expr-writer literal-writer indent-space
+  indent default-type dot op tensor-dialect)
 
 (define (py-in-expr proc) (with ((expression? #t)) (py-expr proc)))
 (define (py-in-stmt proc) (with ((expression? #f)) (py-expr proc)))
@@ -102,11 +102,16 @@
      (else
       (each ":")))))
 
+(define (py-bracket expr)
+  (py-wrap-stmt (each "[" (py-expr expr) "]")))
+
 (define (py-slice seq . o)
   (py-wrap-stmt
-   (each
-    (py-expr seq)
-    "[" (apply py-colon o) "]")))
+   (each (py-expr seq)
+         (py-bracket (apply py-colon o)))))
+
+(define (py-dict expr)
+  (py-wrap-stmt (each "{" (py-expr expr) "}")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; default literals writer
@@ -160,14 +165,83 @@
 (define (py-needs-string-escape? c)
   (if (<= 32 (char->integer c) 127) (memv c '(#\" #\\)) #t))
 
+(define (py-array/simple a)
+  (cond
+   ((not (array? a))
+    (written a))
+   ((zero? (array-dimension a))
+    (written (array-ref a)))
+   ((= 1 (array-dimension a))
+    (each "[" (joined written (array->list a) ", ") "]"))
+   (else
+    ;; TODO: line wrapping
+    (each "["
+          (joined py-array/simple (array->list (array-rows a)) ", ")
+          "]"))))
+
+(define py-array-type
+  (let ((storage-tags
+         `((,u1-storage-class . "int8")
+           (,u8-storage-class . "uint8")
+           (,u16-storage-class . "int32")
+           (,u32-storage-class . "int64")
+           (,u64-storage-class . "float64")
+           (,s8-storage-class . "int8")
+           (,s16-storage-class . "int16")
+           (,s32-storage-class . "int32")
+           (,s64-storage-class . "int64")
+           (,f16-storage-class . "float16")
+           (,f32-storage-class . "float32")
+           (,f64-storage-class . "float64")
+           )))
+    (lambda (a)
+      (cond ((and (specialized-array? a)
+                  (assq (array-storage-class a) storage-tags))
+             => cdr)
+            (else "float32")))))
+
+(define (torch-array-type a)
+  (string-append "torch." (py-array-type a)))
+
+(define (tf-array-type a)
+  (string-append "tf." (py-array-type a)))
+
+(define (py-array a . o)
+  (let ((constant? (and (pair? o) (car o))))
+    (fn (tensor-dialect)
+      (case tensor-dialect
+        ((torch)
+         (each "torch.tensor(" (py-array/simple a)
+               ", dtype=" (torch-array-type a)
+               (if constant? nothing ", requires_grad=True")
+               ")"))
+        ((tf tensorflow)
+         (each (if constant? "tf.constant(" "tf.Variable(")
+               (py-array/simple a)
+               ", dtype=" (tf-array-type a)
+               ")"))
+        ((np numpy) (each "np.array(" (py-array/simple a) ")"))
+        (else (py-array/simple a))))))
+
 (define (py-literal x)
-  (py-wrap-stmt
-   (cond ((char? x) (each (char->py-char x)))
-         ((boolean? x) (each (if x "True" "False")))
-         ((number? x) (py-format-number x))
-         ((string? x) (py-format-string x))
-         ((or (null? x) (equal? x (if #f #f))) (each "None"))
-         (else (each (write-to-string x))))))
+  (fn (literal-writer)
+    (py-wrap-stmt
+     (cond ((and literal-writer (literal-writer x))
+            => (lambda (writer) (writer x)))
+           ((char? x) (each (char->py-char x)))
+           ((boolean? x) (each (if x "True" "False")))
+           ((number? x) (py-format-number x))
+           ((string? x) (py-format-string x))
+           ((vector? x) (py-bracket (joined py-in-expr (vector->list x) ", ")))
+           ((array? x) (py-array x))
+           ((or (null? x) (equal? x (if #f #f))) (each "None"))
+           (else (each (write-to-string x)))))))
+
+(define (py-f-string x)
+  (each "f" (py-literal (display-to-string x))))
+
+(define (py-r-string x)
+  (each "r" (py-literal (display-to-string x))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; default expression generator
@@ -178,6 +252,7 @@
     x)
    ((pair? x)
     (case (car x)
+      ((def) (apply py-def (cdr x)))
       ((if) (apply py-if (cdr x)))
       ((for) (apply py-for (cdr x)))
       ((while) (apply py-while (cdr x)))
@@ -185,6 +260,9 @@
       ((continue) py-continue)
       ((return) (apply py-return (cdr x)))
       ((yield) (apply py-yield (cdr x)))
+      ((import) (apply py-import (cdr x)))
+      ((from) (apply py-from (cdr x)))
+      ((try) (apply py-try (cdr x)))
       ((vector-ref)
        (py-wrap-stmt
         (each (py-expr (cadr x)) "[" (py-expr (caddr x)) "]")))
@@ -204,8 +282,12 @@
                            (cadar ls))
                        (cons (caar ls) res))))))
       ((%comment) (apply py-comment (cdr x)))
+      ((%dict) (apply py-dict (cdr x)))
       ((%enum) (apply py-enum (cdr x)))
+      ((%f) (apply py-f-string (cdr x)))
+      ((%r) (apply py-r-string (cdr x)))
       ((lambda %lambda) (apply py-lambda (cdr x)))
+      ((%list) (py-bracket (apply py-begin (cdr x))))
       ((%slice) (apply py-slice (cdr x)))
       ((&&) (apply py&& (cdr x)))
       ((+ - & * / % ** ! ~ ^ < > <= >= == != << >>
@@ -283,7 +365,7 @@
    (with ((op 'comma))
      (each
       (py-expr (car ls))
-      (let ((flat (with ((no-wrap? #t)) (joined py-expr (cdr ls) ", "))))
+      (let ((flat (with ((no-wrap? #t)) (joined py-in-expr (cdr ls) ", "))))
         (fn (no-wrap?)
           (if no-wrap?
               (py-paren flat)
@@ -292,7 +374,7 @@
                 flat
                 (fn (col)
                   (let ((sep (string-append "," (make-nl-space col))))
-                    (joined py-expr (cdr ls) sep))))))))))))
+                    (joined py-in-expr (cdr ls) sep))))))))))))
 
 (define (py-expr x)
   (fn (expr-writer) ((or expr-writer py-expr/sexp) x)))
@@ -338,7 +420,7 @@
     (if expression?
         (py-expr x)
         (each (if return? "return " "")
-              (py-in-expr (py-expr x))
+              (py-in-expr x)
               nl))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -348,14 +430,14 @@
 (define (py-block col body0 . body)
   (let ((sep (each fl (py-indent-string col))))
     (if (null? body)
-        (each (space-to col) (py-expr body0) fl)
+        (each (space-to col) (py-in-stmt (py-expr body0)) fl)
         (fn ((orig-return? return?))
           (each
            (space-to col)
-           (with ((return? #f))
+           (with ((expression? #f) (return? #f))
              (joined py-expr (cons body0 (drop-right body 1)) sep))
            sep
-           (with ((return? orig-return?))
+           (with ((expression? #f) (return? orig-return?))
              (py-wrap-stmt (last body)))
            fl)))))
 
@@ -404,24 +486,35 @@
 ;; basic control structures
 
 (define (py-while check . body)
-  (fn (col expression?)
+  (fn (col indent)
     (each
-     "while " (py-expr check) ":" nl
-     (py-in-stmt (apply py-block col body))
+     "while " (py-in-expr check) ":" nl
+     (py-in-stmt (apply py-block (+ col (or indent 4)) body))
      fl)))
 
 (define (py-for vars iter . body)
-  (fn (col expression?)
-    (each
-     "for " vars " in " (py-expr iter) ":" nl
-     (py-in-stmt (apply py-block col body))
-     fl)))
+  (fn (col indent expression?)
+    (if expression?
+        (each
+         (apply py-begin body)
+         " for " (if (pair? vars) (joined py-in-expr vars ", ") (each vars))
+         " in " (py-in-expr iter))
+        (each
+         "for " (if (pair? vars) (joined py-in-expr vars ", ") (each vars))
+         " in " (py-in-expr iter) ":" nl
+         (py-in-stmt (apply py-block (+ col (or indent 4)) body))
+         fl))))
 
-(define (py-def name params . body)
-  (fn (col indent)
-    (each "def " name "(" (py-in-expr (joined py-expr params ", ")) "):" nl
-          (py-in-stmt (apply py-block (+ col (or indent 4)) body))
-          fl)))
+(define (py-def sig . body)
+  (let ((name (car sig))
+        (params (cdr sig)))
+    (fn (col indent)
+      (each "def " name "(" (py-in-expr
+                             (with ((op 'comma))
+                               (joined py-expr params ", ")))
+            "):" nl
+            (py-in-stmt (apply py-block (+ col (or indent 4)) body))
+            fl))))
 
 (define (py-lambda params expr)
   (fn ()
@@ -448,7 +541,7 @@
                                 (lp 'else (car ls) '()))
                             fl)))
               (each (if (eq? ls rest) "if " (each indent-str "elif "))
-                    (py-in-expr (py-expr c)) ":" nl
+                    (py-in-expr c) ":" nl
                     (py-block inner-col p)
                     tail)))))))
 
@@ -463,13 +556,13 @@
       (py-maybe-paren
        'if
        (with ((op 'if))
-         (py-expr p) " if " (py-in-expr (py-expr c))
+         (py-expr p) " if " (py-in-expr c)
          " else "
          (if (pair? (cdr ls))
              (lp (car ls) (cadr ls) (cddr ls))
              (py-expr (car ls))))))
      (else
-      (py-or (py-in-expr (py-expr c)) (py-expr p))))))
+      (py-or (py-in-expr c) (py-expr p))))))
 
 (define (py-if . args)
   (fn (expression?)
@@ -485,10 +578,35 @@
 (define py-continue
   (py-wrap-stmt (displayed "continue")))
 (define (py-return expr)
-  (with ((return? #t))
-    (py-expr expr)))
+  (with ((expression? #f) (return? #t))
+    (py-wrap-stmt expr)))
 (define (py-yield expr)
   (py-wrap-stmt (each "yield " (py-expr expr))))
+
+(define (py-import mod . o)
+  (let ((alias (and (pair? o) (car o))))
+    (py-wrap-stmt (each "import " (py-expr mod)
+                        (if alias (each " as " alias) nothing)))))
+(define (py-from mod binding)
+  (py-wrap-stmt (each "from " (py-expr mod) " import " binding)))
+
+(define (py-try . body)
+  (let ((except (find (lambda (x) (and (pair? x) (eq? 'except (car x)))) body))
+        (finally (find (lambda (x) (and (pair? x) (eq? 'finally (car x)))) body))
+        (body (remove (lambda (x) (and (pair? x) (memq (car x) '(except finally))))
+                      body)))
+    (fn (col indent)
+      (let ((inner-col (+ col (or indent 4))))
+        (each "try:" nl
+              (apply py-block inner-col body)
+              (if except
+                  (each "except " (first (second except))
+                        " as " (second (second except)) ":" nl
+                        (apply py-block inner-col (drop except 2)))
+                  nothing)
+              (if finally
+                  (each "finally:" nl (apply py-block inner-col (cdr finally)))
+                  nothing))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; operators
@@ -498,34 +616,40 @@
       (py-unary-op op first)
       (apply py-binary-op op first rest)))
 
-(define (py-binary-op op . ls)
+(define (py-binary-op x-op . ls)
   (define (lit-op? x) (or (py-literal? x) (symbol? x)))
-  (let ((str (display-to-string op)))
-    (py-wrap-stmt
-     (py-maybe-paren
-      op
-      (if (or (equal? str ".") (equal? str "->"))
-          (joined py-expr ls str)
-          (let ((flat
-                 (with ((no-wrap? #t))
-                   (fn (non-spaced-ops?)
-                     (joined py-expr
-                             ls
-                             (if (and (or non-spaced-ops?
-                                          (member op '(: ** ":" "**")))
-                                      (every lit-op? ls))
-                                 str
-                                 (string-append " " str " ")))))))
-            (fn (no-wrap?)
-              (if no-wrap?
-                  flat
-                  (try-fitted
-                   flat
-                   (fn (col)
-                     (joined py-expr
-                             ls
-                             (each nl (make-space (+ 2 col)) str " ")
-                             )))))))))))
+  (let ((op-str (display-to-string x-op)))
+    (fn ((orig-op op) indent)
+      (py-wrap-stmt
+       (py-maybe-paren
+        x-op
+        (if (equal? op-str ".")
+            (joined py-expr ls op-str)
+            (let ((flat
+                   (with ((no-wrap? #t))
+                     (fn (non-spaced-ops?)
+                       (joined py-expr
+                               ls
+                               (if (or (and (or non-spaced-ops?
+                                                (member x-op '(: ** ":" "**")))
+                                            (every lit-op? ls))
+                                       (and (eq? x-op '=)
+                                            (eq? orig-op 'comma)))
+                                   op-str
+                                   (string-append " " op-str " ")))))))
+              (fn (no-wrap?)
+                (if (or no-wrap? (eq? x-op '=))
+                    flat
+                    (try-fitted
+                     flat
+                     (fn (col)
+                       (each "("
+                             (joined py-expr
+                                     ls
+                                     (each " " op-str nl
+                                           (make-space (+ col (or indent 4))))
+                                     )
+                             ")"))))))))))))
 
 (define (py-unary-op op x)
   (py-wrap-stmt

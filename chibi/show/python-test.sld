@@ -67,15 +67,12 @@ else:
       (test "def square(x):
     return x * x
 "
-          (show #f (py-def 'square '(x) (py-return (py* 'x 'x)))))
+          (show #f (py-def '(square x) (py-return (py* 'x 'x)))))
 
       (test "def foo(x, y, z):
-    if y if x else z:
-        return 2
-    else:
-        return 3
+    return 2 if (y if x else z) else 3
 "
-          (show #f (py-def 'foo '(x y z)
+          (show #f (py-def '(foo x y z)
                           (py-return (py-if (py-if 'x 'y 'z) 2 3)))))
 
       (test "some_function(shape, x, y + 1, z)\n"
@@ -131,9 +128,10 @@ else:
           (show #f (py-expr '(%and (== x 0) (%or (== y 2) (== y 3))))))
 
       (test
-          "(abracadabra____ + xylophone____)
-  * (bananarama____ + yellowstonepark____)
-  * (cryptoanalysis + zebramania)\n"
+          "((abracadabra____ + xylophone____) *
+    (bananarama____ + yellowstonepark____) *
+    (cryptoanalysis + zebramania))
+"
           (show #f (py-expr '(* (+ abracadabra____ xylophone____)
                                 (+ bananarama____ yellowstonepark____)
                                 (+ cryptoanalysis zebramania)))))
@@ -163,7 +161,7 @@ else:
         self.next = None
 "
           (show #f (py-class 'Node
-                             (py-def '__init__ '(self data)
+                             (py-def '(__init__ self data)
                                      (py= 'self.data 'data)
                                      (py= 'self.next 'None)))))
 
@@ -188,5 +186,41 @@ class Node:
     BLUE = 4
 "
           (show #f (py-enum 'Color '(RED 1) '(GREEN 3) 'BLUE)))
+
+      (test "while True:
+    dostuff()
+    domorestuff()
+"
+          (show #f (py-while #t '(dostuff) '(domorestuff))))
+
+      (test "for key, val in x.items():
+    print(f\"{key}: {val}\")
+"
+          (show #f (py-for '(key val) '(x.items) '(print (%f "{key}: {val}")))))
+
+      (test "f(key, val) for key, val in x.items()"
+          (show #f (py-in-expr (py-for '(key val) '(x.items) '(f key val)))))
+      (test "list(f(key, val) for key, val in x.items())"
+          (show #f (py-in-expr '(list (for (key val) (x.items) (f key val))))))
+      (test "[f(key, val) for key, val in x.items()]"
+          (show #f (py-in-expr '(%list (for (key val) (x.items) (f key val))))))
+
+      (test "foo(bar=baz, qux=frob)\n"
+          (show #f (py-expr '(foo (= bar baz) (= qux frob)))))
+
+      (test "import numpy as np\n"
+          (show #f (py-expr '(import numpy np))))
+      (test "from math import pi\n"
+          (show #f (py-expr '(from math pi))))
+
+      (test "try:
+    foo()
+except Exception as exn:
+    print(\"oh no!\")
+"
+          (show #f (py-expr '(try
+                              (foo)
+                              (except (Exception exn)
+                                      (print "oh no!"))))))
 
       (test-end))))
