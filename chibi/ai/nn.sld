@@ -9,12 +9,13 @@
           (chibi math stats)
           (chibi math debug))
   (export linear relu block block? block-fn block-ls block-name grid-search
-          accuracy class= init-weights
+          accuracy class= array-index-of-max init-weights
           block-compose stack-blocks dense-block model linear relu
           gradient-descent rms-gradient-descent adam-gradient-descent
           naked-gradient-descent velocity-gradient-descent
           l2-loss sampling-loss smooth
           learning-rate max-learning-iterations learning-batch-size
           loss-epsilon velocity-retained gradient-decay-rate
+          array-normalize-columns
           )
   (include "nn.scm"))

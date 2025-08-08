@@ -7,13 +7,32 @@
 (define gradient-decay-rate (make-parameter .9))
 (define gradient-stabilizer (make-parameter 1e-8))
 
+;;> Normalize the numbered \var{column-indices} of \var{a} by
+;;> subtracting their mean and dividing by their stdev, a common
+;;> preprocessing step in machine learning.
+(define (array-normalize-columns a column-indices)
+  (let* ((res (array-copy a))
+         (columns (array-columns res)))
+    (let lp ((cols column-indices))
+      (cond
+       ((null? cols)
+        res)
+       (else
+        (let ((col (array-ref columns (car cols))))
+          (array-! col (mean col))
+          (array/! col (stdev col))
+          (lp (cdr cols))))))))
+
 ;; aka MSE
-(define (l2-loss target)
-  (lambda (xs ys)
-    (lambda (weights)
-      (let ((pred-ys ((target (const xs)) weights)))
-        (dbg "pred-ys: " pred-ys)
-        (.mean (.sum-axis (.square (.- pred-ys ys))))))))
+(define (l2-loss target . o)
+  (let ((debug (and (pair? o) (car o))))
+    (lambda (xs ys)
+      (lambda (weights)
+        (let ((pred-ys ((target (const xs)) weights)))
+          (if debug
+              (debug xs ys pred-ys)
+              (dbg "pred-ys: " pred-ys))
+          (.mean (.sum-axis (.square (.- pred-ys ys)))))))))
 
 (define (sampling-loss expectant xs ys . o)
   (let* ((random-source (if (pair? o) (car o) default-random-source))
@@ -252,8 +271,11 @@
                        (array-curry a1 (- dim 1))
                        (array-curry a2 (- dim 1)))))))))
 
-(define (accuracy model xs ys)
-  (let ((pred-ys (dual-value (model xs))))
-    (dbg "pred-ys: " pred-ys)
+(define (accuracy model xs ys . o)
+  (let ((debug (and (pair? o) (car o)))
+        (pred-ys (dual-value (model xs))))
+    (if debug
+        (debug xs ys pred-ys)
+        (dbg "pred-ys: " pred-ys))
     (/ (array-sum (class= ys pred-ys))
        (interval-width (array-domain ys) 0))))
