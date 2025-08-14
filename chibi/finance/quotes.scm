@@ -28,7 +28,9 @@
 (define-syntax shell->json
   (syntax-rules ()
     ((shell->json cmd ...)
-     (string->json (shell->string cmd ...)))))
+     (let ((str (shell->string cmd ...)))
+       (log-trace "quote json: " str)
+       (string->json str)))))
 
 (define (format-uri-query base params)
   (uri->string
@@ -38,14 +40,15 @@
 (define quote-summary-url
   "https://query2.finance.yahoo.com/v10/finance/quoteSummary/")
 
+;; TODO: make this configurable, we don't usually need all of these
+;; details.
 (define stock-modules
-  "financialData,quoteType,defaultKeyStatistics,assetProfile,summaryDetail")
+  "financialData,quoteType,defaultKeyStatistics,assetProfile,price,summaryDetail")
 
 ;;> Returns an alist following the Yahoo! Finance API for the given
 ;;> stock symbol.  The optional crumb can be generated from
 ;;> \scheme{get-yahoo-crumb} and reused for multiple requests.
-;;> To just get the latest price you can use:
-;;> \scheme{(assq 'open (cdr (assq 'summaryDetail (get-stock-quote sym))))}
+;;> To just get the latest price you can use \scheme{get-stock-price}.
 (define get-stock-quote
   (opt*-lambda (symbol
                 (crumb #f)
@@ -72,3 +75,25 @@
            (error "error getting stock quote" msg))
           (else
            (error "malformed result" res)))))))
+
+(define (extract-price info)
+  (cond
+   ((assq 'price info)
+    => (lambda (ls)
+         (cond ((assq 'regularMarketPrice (cdr ls)) => cdr)
+               (else (error "malformed price data" ls)))))
+   (else
+    (error "malformed stock data" info))))
+
+(define (get-stock-price symbol . o)
+  (extract-price (apply get-stock-quote symbol o)))
+
+(define (format-currency-symbol from to)
+  (string->symbol
+   (string-append (symbol->string from) (symbol->string to) "=X")))
+
+(define (get-exchange-quote from to . o)
+  (apply get-stock-quote (format-currency-symbol from to) o))
+
+(define (get-exchange-rate from to . o)
+  (extract-price (apply get-exchange-quote from to o)))

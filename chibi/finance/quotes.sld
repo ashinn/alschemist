@@ -12,5 +12,9 @@
           (chibi shell)
           (chibi temp-file)
           (chibi uri))
-  (export get-stock-quote get-yahoo-crumb)
+  (export get-stock-quote
+          get-stock-price
+          get-exchange-quote
+          get-exchange-rate
+          get-yahoo-crumb)
   (include "quotes.scm"))
