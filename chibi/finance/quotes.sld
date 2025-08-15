@@ -18,6 +18,7 @@
   (export get-stock-quote
           get-live-stock-quote
           get-stock-price
+          get-stock-dividend-yield
           get-exchange-quote
           get-exchange-rate
           get-yahoo-crumb)

@@ -92,12 +92,26 @@
    ((assq 'price info)
     => (lambda (ls)
          (cond ((assq 'regularMarketPrice (cdr ls)) => cdr)
-               (else (error "malformed price data" ls)))))
+               (else (error "malformed price data" info)))))
    (else
     (error "malformed stock data" info))))
 
-(define (get-stock-price symbol . o)
-  (extract-price (if (symbol? symbol) (apply get-stock-quote symbol o) symbol)))
+(define (get-stock-price symbol)
+  (extract-price
+   (if (symbol? symbol) (apply get-stock-quote symbol) symbol)))
+
+(define (extract-dividend-yield info)
+  (cond
+   ((assq 'summaryDetail info)
+    => (lambda (ls)
+         (cond ((assq 'trailingAnnualDividendYield (cdr ls)) => cdr)
+               (else (error "malformed summary data" info)))))
+   (else
+    (error "malformed stock data" info))))
+
+(define (get-stock-dividend-yield symbol)
+  (extract-dividend-yield
+   (if (symbol? symbol) (apply get-stock-quote symbol) symbol)))
 
 (define (format-currency-symbol from to)
   (string->symbol
