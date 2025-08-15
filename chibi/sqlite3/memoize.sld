@@ -1,0 +1,12 @@
+
+(define-library (chibi sqlite3 memoize)
+  (import (scheme base)
+          (scheme read)
+          (scheme write)
+          (scheme time)
+          (chibi memoize)
+          (chibi optional)
+          (chibi sqlite3)
+          (only (chibi ast) procedure-arity procedure-variadic?))
+  (export make-sqlite3-cache sqlite3-cache-ref! memoize/sqlite3)
+  (include "memoize.scm"))
