@@ -64,7 +64,7 @@
 
 ;;> Returns a new prepared SQL statement from the string.
 
-(define-c sqlite3_stmt (sqlite3-prepare "sqlite3_prepare_return") (sqlite3 string (value (string-length arg1) int)))
+(define-c sqlite3_stmt (sqlite3-prepare "sqlite3_prepare_return") (sqlite3 string (value (string-size arg1) int)))
 
 ;;> Bind an integer value to the given argument of the statement.
 
@@ -76,7 +76,7 @@
 
 ;;> Bind a string value to the given argument of the statement.
 
-(define-c int sqlite3-bind-text (sqlite3_stmt int string (value (string-length arg2) int) (value NULL void*)))
+(define-c int sqlite3-bind-text (sqlite3_stmt int string (value (string-size arg2) int) (value NULL void*)))
 
 ;;> Bind a bytevector value to the given argument of the statement.
 
