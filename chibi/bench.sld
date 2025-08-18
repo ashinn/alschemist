@@ -1,0 +1,47 @@
+
+(define-library (chibi bench)
+  (export bench time-it)
+  (import (scheme base) (scheme time) (chibi log) (chibi math stats))
+  (cond-expand
+   (chibi (import (only (chibi ast) gc-usecs)))
+   (else (begin (define (gc-usecs) 0))))
+  (begin
+    (define default-min-time-ms 10)
+    (define-syntax bench
+      (syntax-rules ()
+        ((bench expr)
+         (bench expr default-min-time-ms))
+        ((bench expr min-time)
+         (run-benchmark (lambda () expr) 'expr min-time 0))))
+    (define-syntax time-it
+      (syntax-rules ()
+        ((time-it expr)
+         (run-benchmark (lambda () expr) 'expr 0 1))))
+    (define (run-benchmark thunk name min-time max-iters)
+      (let ((start (current-second)))
+        (let lp ((i 0)
+                 (since start)
+                 (times '())
+                 (gc-times '()))
+          (let* ((res (thunk))
+                 (end (current-second))
+                 (elapsed-ms (* (- end since) 1000))
+                 (times (cons elapsed-ms times))
+                 (gc-times (cons (/ (gc-usecs) 1000.) gc-times))
+                 (i (+ i 1)))
+            (cond
+             ((or (and (positive? min-time)
+                       (>= (* (- end start) 1000) min-time))
+                  (and (positive? max-iters) (>= i max-iters)))
+              (if (= i 1)
+                  (log-info "time " name ": cpu=" (car times)
+                            " ms, gc=" (car gc-times) " ms")
+                  (log-info "time " name ": reps=" i
+                            ", cpu-avg=" (mean times)
+                            " ms, cpu-median=" (median times)
+                            " ms, gc-avg=" (mean gc-times)
+                            " ms, gc-median=" (median gc-times)
+                            " ms"))
+              res)
+             (else
+              (lp i end times gc-times)))))))))
