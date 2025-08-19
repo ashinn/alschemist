@@ -12,6 +12,9 @@
           => (lambda (str) (member str '("1" "#t" "true" "TRUE"))))
          (else #f))))
 
+(define-memoized (get-fx-rate from to)
+  (get-exchange-rate from to))
+
 ;; Shorthand for getting the current exchange rate optionally falling
 ;; back to a default value.
 (define fx
@@ -26,9 +29,9 @@
                     (log-warn "error getting exchange rate, using default: "
                               from " -> " to ": " exn)
                     default-rate))
-             (get-exchange-rate from to))))
+             (get-fx-rate from to))))
      (else
-      (get-exchange-rate from to)))))
+      (get-fx-rate from to)))))
 
 (define-record-type Stock
   (%make-stock symbol price currency dividend-yield cagr volatility)

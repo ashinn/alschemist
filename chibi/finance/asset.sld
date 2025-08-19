@@ -6,6 +6,7 @@
           (srfi 227)
           (chibi assert)
           (chibi finance quotes)
+          (chibi memoize)
           (chibi log))
   (export
    make-stock stock? stock-symbol stock-price stock-currency

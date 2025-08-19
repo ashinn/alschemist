@@ -98,7 +98,7 @@
 
 (define (get-stock-price symbol)
   (extract-price
-   (if (symbol? symbol) (apply get-stock-quote symbol) symbol)))
+   (if (symbol? symbol) (get-stock-quote symbol) symbol)))
 
 (define (extract-dividend-yield info)
   (cond
@@ -111,7 +111,7 @@
 
 (define (get-stock-dividend-yield symbol)
   (extract-dividend-yield
-   (if (symbol? symbol) (apply get-stock-quote symbol) symbol)))
+   (if (symbol? symbol) (get-stock-quote symbol) symbol)))
 
 (define (format-currency-symbol from to)
   (string->symbol
