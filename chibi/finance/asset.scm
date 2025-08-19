@@ -16,16 +16,19 @@
 ;; back to a default value.
 (define fx
   (opt-lambda (from to (default-rate #f))
-    (if default-rate
-        (if (finance-offline-data?)
-            default-rate
-            (guard (exn
-                    (else
-                     (log-warn "error getting exchange rate, using default: "
-                               from " -> " to ": " exn)
-                     default-rate))
-              (get-exchange-rate from to)))
-        (get-exchange-rate from to))))
+    (cond
+     ((eq? from to) 1)
+     (default-rate
+       (if (finance-offline-data?)
+           default-rate
+           (guard (exn
+                   (else
+                    (log-warn "error getting exchange rate, using default: "
+                              from " -> " to ": " exn)
+                    default-rate))
+             (get-exchange-rate from to))))
+     (else
+      (get-exchange-rate from to)))))
 
 (define-record-type Stock
   (%make-stock symbol price currency dividend-yield cagr volatility)
@@ -83,6 +86,11 @@
                 (unit 'JPY)
                 (interest 0)
                 (type (if (stock? unit) 'stock 'liquid)))
+    (assert (string? name))
+    (assert (number? value))
+    (assert (or (symbol? unit) (stock? unit)))
+    (assert (number? interest))
+    (assert (symbol? type))
     (%make-asset name value unit interest type)))
 
 (define (asset-stock? asset)
@@ -143,7 +151,7 @@
   (portfolio-assets-set! pf (cons asset (portfolio-assets pf))))
 
 (define (portfolio-remove-asset! pf asset)
-  (portfolio-assets-set! pf (remove asset (portfolio-assets pf))))
+  (portfolio-assets-set! pf (delete asset (portfolio-assets pf))))
 
 (define (portfolio-create-asset! pf amount unit)
   (let ((asset
