@@ -172,17 +172,27 @@
    ((zero? amount))
    ((positive? amount)
     ;; positive, just add to the first matching asset
-    (let ((asset (or (find (lambda (a) (eq? unit (asset-unit a)))
+    (let ((asset (or (find (lambda (a)
+                             (and (or (stock? unit)
+                                      (eq? 'liquid (asset-type a)))
+                                  (eq? unit (asset-unit a))))
                            (portfolio-flat-assets pf))
                      (portfolio-create-asset! pf 0 unit))))
       (asset-inc! asset amount)
       asset))
    (else
     ;; negative, maybe deduct from multiple assets
-    (let lp ((ls (portfolio-flat-assets pf))
+    (let lp ((ls (if (symbol? unit)
+                     (filter (lambda (asset)
+                               (eq? 'liquid (asset-type asset)))
+                             (portfolio-flat-assets pf))
+                     (portfolio-flat-assets pf)))
              (needed (- amount))
-             (res '()))
+             (res '())
+             (liquid-only? (symbol? unit)))
       (cond
+       ((and (null? ls) (positive? needed) liquid-only?)
+        (lp (portfolio-flat-assets pf) needed res #f))
        ((or (null? ls) (<= needed 0))
         (for-each
          (lambda (x)
@@ -208,9 +218,10 @@
         (let ((val-to-take (min needed (asset-value (car ls)))))
           (lp (cdr ls)
               (- needed val-to-take)
-              (cons (cons (car ls) val-to-take) res))))
+              (cons (cons (car ls) val-to-take) res)
+              liquid-only?)))
        (else
-        (lp (cdr ls) needed res)))))))
+        (lp (cdr ls) needed res liquid-only?)))))))
 
 ;; Sells the given number of shares and stores the proceeds in the
 ;; same portfolio.
