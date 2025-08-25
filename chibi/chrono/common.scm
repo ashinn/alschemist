@@ -265,8 +265,10 @@
   (from-instant
    instant->gregorian)
   (format
-   '(year "-" (fit0 2 month) "-" (fit0 2 day) "T"
-          (fit0 2 hour) ":" (fit0 2 minute) ":" (fit0 2 second))))
+   '((pad0 4 year) (? "-") (fit0 2 month) (? "-") (fit0 2 day)
+     (? ((? "T") (fit0 2 hour) (? ":") (fit0 2 minute)
+         (? ((? ":") (fit0 2 second)))
+         (? "Z"))))))
 
 (define-chronology chronology:gregorian-date
   (record Date)
@@ -301,7 +303,7 @@
   (from-instant
    instant->gregorian-date)
   (format
-   '(year "-" (fit0 2 month) "-" (fit0 2 day))))
+   '((pad0 4 year) (? "-") (fit0 2 month) (? "-") (fit0 2 day))))
 
 (define-chronology chronology:time
   (record Time)
@@ -313,7 +315,7 @@
    (second time-second (lower 0) (upper 59))
    (nanosecond time-nanosecond (lower 0) (upper 999999999)))
   (format
-   '((fit0 2 hour) ":" (fit0 2 minute) ":" (fit0 2 second))))
+   '((fit0 2 hour) (? ":") (fit0 2 minute) (? ((? ":") (fit0 2 second))))))
 
 (define-chronology chronology:julian-date
   (record Julian-Date)
@@ -348,4 +350,4 @@
   (from-instant
    instant->julian-date)
   (format
-   '(year "-" (fit0 2 month) "-" (fit0 2 day))))
+   '((pad0 4 year) (? "-") (fit0 2 month) (? "-") (fit0 2 day))))

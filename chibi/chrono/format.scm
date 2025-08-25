@@ -46,6 +46,8 @@
 ;; (ordinal x): locale-specific ordinal enum (en = st: 0, nd: 1, rd: 2, th: 3)
 ;; (ref #("st" "nd" "rd" "th") (ordinal x))
 ;; (nth x): short for (ref nth-names (ordinal x))
+;; (optional x): format x as usual, but don't fail if it's missing on parse
+;; (or x y ...): format just x, on parsing try alternatives
 ;; am/pm: (ref am/pm-names (modulo hour 12))
 ;; time-zone: tzdb name, e.g. America/New_York
 ;; time-zone-offset: +hhmm offset
@@ -288,6 +290,7 @@
        ((virtual-field? x) x)
        ((unparseable? x) x)
        ((temporal-macro? x) x)
+       ((memq x '(? optional or)) x)
        ((symbol? x)
         (error (string-append "unknown locale formatter for "
                               (symbol->string (chronology-name chrono))
@@ -356,9 +359,11 @@
        ((and (pair? x) (null? (cdr x)))
         (compile (car x) return))
        ((pair? x)
-        (let ((ls (map (lambda (a) (compile a (lambda (f) f))) x)))
-          (return (lambda (t out)
-                    (for-each (lambda (f) (f t out)) ls)))))
+        (if (memq (car x) '(? optional or))
+            (compile (cadr x) return)
+            (let ((ls (map (lambda (a) (compile a (lambda (f) f))) x)))
+              (return (lambda (t out)
+                        (for-each (lambda (f) (f t out)) ls))))))
        ((null? x)
         (return (lambda (t out) '())))
        (else
@@ -687,15 +692,42 @@
             (else
              (error "can't parse more than one field with unparseable" x)))))
        ((pair? x)
-        ;; Otherwise assume a pair is an implicit sequence.
-        (let ((parse-car (compile (car x) values))
-              (parse-cdr (compile (cdr x) values)))
-          (return (lambda (ls str sc kons pass fail)
-                    (parse-car ls str sc
-                               kons
-                               (lambda (ls str sc fail)
-                                 (parse-cdr ls str sc kons pass fail))
-                               fail)))))
+        (cond
+         ;; TODO: Generalize unparseables to support optional/or.
+         ((memq (car x) '(? optional))
+          (assert (= 2 (length x)))
+          (let ((parse-body (compile (second x) values)))
+            (return
+             (lambda (ls str sc kons pass fail)
+               ;; Override fail to just call pass on the current state.
+               (parse-body ls str sc kons pass
+                           (lambda (reason err-str)
+                             (pass ls str sc fail)))))))
+         ((eq? (car x) 'or)
+          (case (length x)
+            ((1) (return values))
+            ((2) (compile (second x) return))
+            (else
+             (let ((parse-car (compile (second x) values))
+                   (parse-cdr (if (= 3 (length x))
+                                  (compile (third x) values)
+                                  (compile `(or ,(cddr x)) values))))
+               (return
+                (lambda (ls str sc kons pass fail)
+                  ;; Override fail to fall back to alternatives.
+                  (parse-car ls str sc kons pass
+                             (lambda (reason err-str)
+                               (parse-cdr ls str sc fail)))))))))
+         (else
+          ;; Otherwise assume a pair is an implicit sequence.
+          (let ((parse-car (compile (car x) values))
+                (parse-cdr (compile (cdr x) values)))
+            (return (lambda (ls str sc kons pass fail)
+                      (parse-car ls str sc
+                                 kons
+                                 (lambda (ls str sc fail)
+                                   (parse-cdr ls str sc kons pass fail))
+                                 fail)))))))
        ((null? x)
         (return (lambda (ls str sc kons pass fail) (pass ls str sc fail))))
        ((chrono-field? x)

@@ -1,6 +1,6 @@
 
 (define-library (chibi chrono-test)
-  (import (scheme base)
+  (import (scheme base) (scheme list)
           (chibi chrono) (chibi chrono japan)
           (chibi locale) (chibi test))
   (export run-tests)
@@ -220,6 +220,18 @@
                  (test alist
                      (temporal->alist
                       (string->temporal str fmt chrono locale strict?))))))
+            (test `((year . 2013) (month . 12) (day . 12))
+                (take (cdr (temporal->alist (string->temporal "2013-12-12")))
+                      3))
+            (test `((year . 2013) (month . 12) (day . 12))
+                (take (cdr (temporal->alist (string->temporal "20131212")))
+                      3))
+            (test `((year . 2013) (month . 12) (day . 12) (hour . 9) (minute . 30))
+                (take (cdr (temporal->alist (string->temporal "20131212T0930")))
+                      5))
+            (test `((year . 2013) (month . 12) (day . 12))
+                (temporal->alist (string->temporal "2013-12-12"
+                                                   chronology:gregorian-date)))
             (test-parse `((year . 2021) (month . 10) (day . 22))
                         "2021/10/22"
                         '(year "/" month "/" day))

@@ -24,11 +24,11 @@
 
 (define-library (chibi chrono)
   (import (scheme base)
+          (srfi 227)
           (chibi chrono base)
           (chibi chrono common)
           (chibi chrono format)
-          (chibi chrono time-zone)
-          (chibi optional))
+          (chibi chrono time-zone))
   (export
    ;; base
    ;; instants
@@ -44,7 +44,7 @@
    ;; defining new chronologies
    define-chronology
    ;; chronology internals
-   make-chronology chronology?
+   make-chronology chronology? chronology-known-field?
    chronology-name chronology-fields chronology-virtual
    chronology-constructor chronology-to-instant chronology-from-instant
    ;; field internals
@@ -104,9 +104,29 @@
       (let-optionals o ((chronology chronology:gregorian)
                         (strict? #f))
         (chronology-alist->temporal ls chronology strict?)))
-    (define (string->temporal str fmt . o)
-      (let-optionals o ((chronology chronology:gregorian) . rest)
-        (apply chronology-string->temporal str fmt chronology rest)))
+    ;;> (string->temporal str [fmt] [chronology] [locale strict? lookup])
+    (define (string->temporal str . o)
+      (cond
+       ((null? o)
+        (chronology-string->temporal str
+                                     (chronology-format chronology:gregorian)
+                                     chronology:gregorian))
+       ((chronology? (car o))
+        (apply chronology-string->temporal
+               str
+               (chronology-format (car o))
+               (car o)
+               (cdr o)))
+       ((pair? (car o))
+        (let-optionals o ((fmt #f) (chronology chronology:gregorian) . rest)
+          (apply chronology-string->temporal
+                 str
+                 (or fmt (chronology-format chronology))
+                 chronology
+                 rest)))
+       (else
+        (error "string->temportal expected chronology or format, got" (car o))
+        )))
     (define (temporal-formatter fmt . o)
       (let-optionals o ((chronology chronology:gregorian) . rest)
         (apply chronology-temporal-formatter fmt chronology rest)))
