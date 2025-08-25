@@ -195,6 +195,12 @@
     ((define-chronology name . rest)
      (define-chrono name #f #f #f () () #f #f #f '() rest))))
 
+(define (chronology-known-field? chronology field)
+  (or (any (lambda (f) (eq? field (chrono-field-name f)))
+           (chronology-fields chronology))
+      (any (lambda (f) (eq? field (car f)))
+           (chronology-virtual chronology))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;> Returns the exact current number of nanoseconds since the POSIX epoch.

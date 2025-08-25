@@ -17,7 +17,7 @@
    ;; defining new chronologies
    define-chronology
    ;; chronology internals
-   make-chronology chronology?
+   make-chronology chronology? chronology-known-field?
    chronology-name chronology-fields chronology-virtual
    chronology-constructor chronology-to-instant chronology-from-instant
    chronology-format chronology-messages

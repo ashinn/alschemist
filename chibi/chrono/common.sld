@@ -19,6 +19,8 @@
           is-leap-year? is-julian-leap-year?
           leap-years-from-epoch-to
           day-of-week julian-day-of-week month-day-upper-bound
+          day-of-year julian-day-of-year week-of-year julian-week-of-year
+          week-of-month julian-week-of-month
           gregorian->julian-day-number julian->julian-day-number
           cumulative-days-to-start-of-month)
   (include "common.scm"))

@@ -13,6 +13,12 @@
     ((4 6 9 11) 30)
     (else 31)))
 
+(define (julian-month-day-upper-bound year month)
+  (case month
+    ((2) (if (is-julian-leap-year? year) 29 28))
+    ((4 6 9 11) 30)
+    (else 31)))
+
 ;; ignores leap years
 (define cumulative-days-to-start-of-month
   '#(0 31 59 90 120 151 181 212 243 273 304 334))
@@ -75,11 +81,38 @@
      1729777))
 
 ;; 0 is sunday, input gregorian
+;; TODO: allow custom week start
 (define (day-of-week year month day)
   (modulo (+ 1 (gregorian->julian-day-number year month day)) 7))
 
 (define (julian-day-of-week year month day)
   (modulo (+ 1 (julian->julian-day-number year month day)) 7))
+
+;; 1-based
+(define (day-of-year year month day)
+  (+ (days-to-start-of-month year month) day))
+
+(define (julian-day-of-year year month day)
+  (+ (julian-days-to-start-of-month year month) day))
+
+;; 1-based (add 7 for the 1 and 6 to round up, hence +13)
+(define (week-of-year year month day)
+  (let ((days-in-first-week (- 7 (day-of-week year 1 1))))
+    (quotient (+ 13 (- (day-of-year year month day) days-in-first-week))
+              7)))
+
+(define (julian-week-of-year year month day)
+  (let ((days-in-first-week (- 7 (julian-day-of-week year 1 1))))
+    (quotient (+ 13 (- (julian-day-of-year year month day) days-in-first-week))
+              7)))
+
+(define (week-of-month year month day)
+  (let ((days-in-first-week (- 7 (day-of-week year month 1))))
+    (quotient (+ 13 (- day days-in-first-week)) 7)))
+
+(define (julian-week-of-month year month day)
+  (let ((days-in-first-week (- 7 (julian-day-of-week year month 1))))
+    (quotient (+ 13 (- day days-in-first-week)) 7)))
 
 ;; The number of leap years occuring between 1970 and year (exclusive),
 ;; returning a negative value for years before 1970.
@@ -216,7 +249,15 @@
     (lambda (t)
       (gregorian->julian-day-number
        (datetime-year t) (datetime-month t) (datetime-day t))))
-   ;; (week-of-year )
+   (day-of-year
+    (lambda (t)
+      (day-of-year (datetime-year t) (datetime-month t) (datetime-day t))))
+   (week-of-month
+    (lambda (t)
+      (week-of-month (datetime-year t) (datetime-month t) (datetime-day t))))
+   (week-of-year
+    (lambda (t)
+      (week-of-year (datetime-year t) (datetime-month t) (datetime-day t))))
    ;; (local-time-offset )
    )
   (to-instant
@@ -245,7 +286,16 @@
    (julian-day
     (lambda (t)
       (gregorian->julian-day-number
-       (date-year t) (date-month t) (date-day t)))))
+       (date-year t) (date-month t) (date-day t))))
+   (day-of-year
+    (lambda (t)
+      (day-of-year (date-year t) (date-month t) (date-day t))))
+   (week-of-month
+    (lambda (t)
+      (week-of-month (date-year t) (date-month t) (date-day t))))
+   (week-of-year
+    (lambda (t)
+      (week-of-year (date-year t) (date-month t) (date-day t)))))
   (to-instant
    gregorian-date->instant)
   (from-instant
@@ -273,6 +323,26 @@
    (year julian-date-year (lower -inf.0) (upper +inf.0))
    (month julian-date-month (lower 1) (upper 12))
    (day julian-date-day (lower 1) (upper 28) (get-upper month-day-upper-bound)))
+  (virtual
+   (day-of-week
+    (lambda (t)
+      (julian-day-of-week (date-year t) (date-month t) (date-day t))))
+   (days-in-month
+    (lambda (t)
+      (julian-month-day-upper-bound (date-year t) (date-month t))))
+   (julian-day
+    (lambda (t)
+      (julian->julian-day-number
+       (date-year t) (date-month t) (date-day t))))
+   (day-of-year
+    (lambda (t)
+      (julian-day-of-year (date-year t) (date-month t) (date-day t))))
+   (week-of-month
+    (lambda (t)
+      (julian-week-of-month (date-year t) (date-month t) (date-day t))))
+   (week-of-year
+    (lambda (t)
+      (julian-week-of-year (date-year t) (date-month t) (date-day t)))))
   (to-instant
    julian-date->instant)
   (from-instant
