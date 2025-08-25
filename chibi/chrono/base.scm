@@ -381,13 +381,13 @@
 (define (temporal-chronology t)
   (hash-table-ref chronologies (record-rtd t)))
 
-;;> Returns the lsit of chronology fields for temporal \var{t}.
+;;> Returns the list of chronology fields for temporal \var{t}.
 (define (temporal-fields t)
   (chronology-fields (temporal-chronology t)))
 
 ;;> Converts temporal \var{t} to an instant.
 (define (temporal->instant t)
-  (let ((chronology (hash-table-ref chronologies (record-rtd t))))
+  (let ((chronology (temporal-chronology t)))
     ((chronology-to-instant chronology) t)))
 
 ;;> Converts \var{instant} to a temporal in \var{chronology}.
