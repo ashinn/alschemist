@@ -45,7 +45,9 @@
    define-chronology
    ;; chronology internals
    make-chronology chronology? chronology-known-field?
-   chronology-name chronology-fields chronology-virtual
+   chronology-explicit-field? chronology-virtual-field?
+   chronology-field<? chronology-field>?
+   chronology-name chronology-fields chronology-virtual chronology-durations
    chronology-constructor chronology-to-instant chronology-from-instant
    ;; field internals
    make-chrono-field chrono-field?
@@ -53,6 +55,8 @@
    chrono-field-lb chrono-field-ub chrono-field-get-lb chrono-field-get-ub
    chrono-field-updater chrono-field-adjuster
    chrono-field-upper-bound chrono-field-lower-bound
+   virtual-field? virtual-field-name
+   virtual-field-getter virtual-field-granularity
    ;; time-zones
    ;; temporals with time-zones
    temporal-offset temporal-in-utc temporal-in-time-zone
@@ -125,8 +129,7 @@
                  chronology
                  rest)))
        (else
-        (error "string->temportal expected chronology or format, got" (car o))
-        )))
+        (error "string->temporal expected chronology or format, got" (car o)))))
     (define (temporal-formatter fmt . o)
       (let-optionals o ((chronology chronology:gregorian) . rest)
         (apply chronology-temporal-formatter fmt chronology rest)))

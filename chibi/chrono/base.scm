@@ -31,12 +31,13 @@
 ;;>  \item[better abstraction and sharing of code]]
 
 (define-record-type Chronology
-  (make-chronology name fields virtual constructor to-instant from-instant
-                   format messages)
+  (make-chronology name fields virtual durations constructor
+                   to-instant from-instant format messages)
   chronology?
   (name chronology-name)
   (fields chronology-fields)
   (virtual chronology-virtual)
+  (durations chronology-durations)
   (constructor chronology-constructor)
   (to-instant chronology-to-instant)
   (from-instant chronology-from-instant)
@@ -64,8 +65,22 @@
                      (parser #f) (formatter #f))
     (%make-chrono-field name getter lb ub get-lb get-ub updater adjuster default parser formatter)))
 
+(define (chronology-field-index chronology field)
+  (let lp ((ls (chronology-fields chronology))
+           (i 0))
+    (cond
+     ((null? ls) #f)
+     ((eq? field (if (symbol? field) (chrono-field-name (car ls)) (car ls))) i)
+     (else (lp (cdr ls) (+ i 1))))))
+
 (define (chrono-field-lower-bound field reverse-prev-values)
   (cond
+   ((and (chrono-field-get-lb field)
+         (temporal? reverse-prev-values))
+    (let* ((chrono (temporal-chronology reverse-prev-values))
+           (vals (take (temporal->list reverse-prev-values)
+                       (chronology-field-index chrono field))))
+      (chrono-field-lower-bound field (reverse vals))))
    ((chrono-field-get-lb field)
     => (lambda (get-lb) (apply get-lb (reverse reverse-prev-values))))
    ((chrono-field-lb field))
@@ -73,6 +88,12 @@
 
 (define (chrono-field-upper-bound field reverse-prev-values)
   (cond
+   ((and (chrono-field-get-ub field)
+         (temporal? reverse-prev-values))
+    (let* ((chrono (temporal-chronology reverse-prev-values))
+           (vals (take (temporal->list reverse-prev-values)
+                       (chronology-field-index chrono field))))
+      (chrono-field-upper-bound field (reverse vals))))
    ((chrono-field-get-ub field)
     => (lambda (get-ub) (apply get-ub (reverse reverse-prev-values))))
    ((chrono-field-ub field))
@@ -137,13 +158,25 @@
      (syntax-error "unknown chrono-field attribute" (other . x)))
     ))
 
+(define-record-type Virtual-Field
+  (%make-virtual-field name getter granularity)
+  virtual-field?
+  (name virtual-field-name)
+  (getter virtual-field-getter)
+  (granularity virtual-field-granularity))
+
+(define make-virtual-field
+  (opt-lambda (name getter (granularity #f))
+    (%make-virtual-field name getter granularity)))
+
 (define-syntax define-chrono
-  (syntax-rules (record constructor predicate fields virtual
+  (syntax-rules (record constructor predicate fields virtual durations
                         to-instant from-instant format messages)
     ((define-chrono name
        instance-rtd instance-constructor instance-predicate
        ((field getter spec ...) ...)
-       ((vfield vgetter) ...)
+       ((vfield . vspec) ...)
+       (duration ...)
        to
        from
        fmt
@@ -162,7 +195,8 @@
                   (chrono-field 'field getter
                                 #f #f #f #f #f #f #f #f #f (spec ...))
                   ...)
-                 (list (cons 'vfield vgetter) ...)
+                 (list (make-virtual-field 'vfield . vspec) ...)
+                 '(duration ...)
                  instance-constructor
                  to
                  from
@@ -170,36 +204,74 @@
                  msg)))
            (hash-table-set! chronologies instance-rtd res)
            res))))
-    ((define-chrono name r c p f v to from fmt msg ((record rtd) . rest))
-     (define-chrono name rtd c p f v to from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((constructor cons) . rest))
-     (define-chrono name r cons p f v to from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((predicate pred) . rest))
-     (define-chrono name r c pred f v to from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((fields . ls) . rest))
-     (define-chrono name r c p ls v to from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((virtual . ls) . rest))
-     (define-chrono name r c p f ls to from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((to-instant to-i) . rest))
-     (define-chrono name r c p f v to-i from fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((from-instant fi) . rest))
-     (define-chrono name r c p f v to fi fmt msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((format fo) . rest))
-     (define-chrono name r c p f v to from fo msg rest))
-    ((define-chrono name r c p f v to from fmt msg ((messages m) . rest))
-     (define-chrono name r c p f v to from fmt m rest))
+    ((define-chrono name r c p f v d to from fmt msg ((record rtd) . rest))
+     (define-chrono name rtd c p f v d to from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((constructor cons) . rest))
+     (define-chrono name r cons p f v d to from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((predicate pred) . rest))
+     (define-chrono name r c pred f v d to from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((fields . ls) . rest))
+     (define-chrono name r c p ls v d to from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((virtual . ls) . rest))
+     (define-chrono name r c p f ls d to from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((to-instant to-i) . rest))
+     (define-chrono name r c p f v d to-i from fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((from-instant fi) . rest))
+     (define-chrono name r c p f v d to fi fmt msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((format fo) . rest))
+     (define-chrono name r c p f v d to from fo msg rest))
+    ((define-chrono name r c p f v d to from fmt msg ((messages m) . rest))
+     (define-chrono name r c p f v d to from fmt m rest))
+    ((define-chrono name r c p f v d to from fmt msg ((durations . ls) . rest))
+     (define-chrono name r c p f v ls to from fmt msg rest))
     ))
 
 (define-syntax define-chronology
   (syntax-rules ()
     ((define-chronology name . rest)
-     (define-chrono name #f #f #f () () #f #f #f '() rest))))
+     (define-chrono name #f #f #f () () () #f #f #f '() rest))))
+
+(define (chronology-explicit-field? chronology field)
+  (find (lambda (f) (eq? field (chrono-field-name f)))
+        (chronology-fields chronology)))
+
+(define (chronology-virtual-field? chronology field)
+  (find (lambda (f) (eq? field (virtual-field-name f)))
+        (chronology-virtual chronology)))
 
 (define (chronology-known-field? chronology field)
-  (or (any (lambda (f) (eq? field (chrono-field-name f)))
-           (chronology-fields chronology))
-      (any (lambda (f) (eq? field (car f)))
-           (chronology-virtual chronology))))
+  (or (chronology-explicit-field? chronology field)
+      (chronology-virtual-field? chronology field)))
+
+;; virtual fields are unordered
+(define (chronology-field-cmp chronology field1 field2)
+  (cond
+   ((eq? field1 field2) 0)
+   ((assq field1 (chronology-durations chronology))
+    => (lambda (dur)
+         (let ((res (chronology-field-cmp chronology (second dur) field2)))
+           (if (zero? res) 1 res))))
+   ((assq field2 (chronology-durations chronology))
+    => (lambda (dur)
+         (let ((res (chronology-field-cmp chronology field1 (second dur))))
+           (if (zero? res) -1 res))))
+   (else
+    (let lp ((ls (chronology-fields chronology)))
+      (cond
+       ((null? ls) 0)
+       ((eq? field1
+             (if (chrono-field? field1) (car ls) (chrono-field-name (car ls))))
+        1)
+       ((eq? field2
+             (if (chrono-field? field2) (car ls) (chrono-field-name (car ls))))
+        -1)
+       (else
+        (lp (cdr ls))))))))
+
+(define (chronology-field<? chronology field1 field2)
+  (negative? (chronology-field-cmp chronology field1 field2)))
+(define (chronology-field>? chronology field1 field2)
+  (positive? (chronology-field-cmp chronology field1 field2)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -207,9 +279,9 @@
 (define (current-nanosecond)
   (exact (floor (* 1e9 (current-second)))))
 
-;;> Returns \scheme{#t} iff \var{x} is a tempora.
+;;> Returns \scheme{#t} iff \var{x} is a temporal.
 (define (temporal? x)
-  (and (temporal-chronology x) #t))
+  (and (record? x) (temporal-chronology x) #t))
 
 ;;> Returns the value of \var{field} in the temporal \var{t}, or
 ;;> signals an error if \var{field} is unknown in \var{t}'s
@@ -221,7 +293,8 @@
       (let lp ((fields (chronology-virtual (temporal-chronology t))))
         (cond
          ((null? fields) (error "unknown field" field t))
-         ((eq? field (caar fields)) ((cdar fields) t))
+         ((eq? field (virtual-field-name (car fields)))
+          ((virtual-field-getter (car fields)) t))
          (else (lp (cdr fields))))))
      ((eq? field (chrono-field-name (car fields)))
       ((chrono-field-getter (car fields)) t))
@@ -352,28 +425,33 @@
 ;;> \scheme{temporal-update}, won't signal an out of range error.
 (define (temporal-adjust t field increment)
   (let ((chronology (temporal-chronology t)))
-    (let lp ((ls (temporal->list t))
-             (fields (chronology-fields chronology))
-             (prev '())
-             (prev-fields '()))
-      (cond
-       ((null? fields)
-        (error "unknown field" field))
-       ((eq? field (chrono-field-name (car fields)))
+    (cond
+     ((assq field (chronology-durations chronology))
+      => (lambda (dur)
+           (temporal-adjust t (second dur) (* increment (third dur)))))
+     (else
+      (let lp ((ls (temporal->list t))
+               (fields (chronology-fields chronology))
+               (prev '())
+               (prev-fields '()))
         (cond
-         ((chrono-field-adjuster (car fields))
-          => (lambda (adjuster) (adjuster t increment)))
+         ((null? fields)
+          (error "unknown field" field))
+         ((eq? field (chrono-field-name (car fields)))
+          (cond
+           ((chrono-field-adjuster (car fields))
+            => (lambda (adjuster) (adjuster t increment)))
+           (else
+            (let* ((value (+ (car ls) increment))
+                   (prev2 (carry-adjust prev-fields prev (car fields) value)))
+              ;; TODO: cap trailing fields
+              (apply (chronology-constructor chronology)
+                     `(,@(reverse prev2) ,@(cdr ls)))))))
          (else
-          (let* ((value (+ (car ls) increment))
-                 (prev2 (carry-adjust prev-fields prev (car fields) value)))
-            ;; TODO: cap trailing fields
-            (apply (chronology-constructor chronology)
-                   `(,@(reverse prev2) ,@(cdr ls)))))))
-       (else
-        (lp (cdr ls)
-            (cdr fields)
-            (cons (car ls) prev)
-            (cons (car fields) prev-fields)))))))
+          (lp (cdr ls)
+              (cdr fields)
+              (cons (car ls) prev)
+              (cons (car fields) prev-fields)))))))))
 
 (define chronologies (make-hash-table eq?))
 
@@ -462,9 +540,10 @@
       (let lp ((ls ls))
         (cond
          ((null? ls) (pass res))
-         ((assq (caar ls) (chronology-virtual chronology))
-          => (lambda (cell)
-               (let ((expected ((cdr cell) res)))
+         ((find (lambda (x) (eq? (caar ls) (virtual-field-name x)))
+                (chronology-virtual chronology))
+          => (lambda (vf)
+               (let ((expected ((virtual-field-getter vf) res)))
                  (if (equal? (cdar ls) expected)
                      (lp (cdr ls))
                      (fail res

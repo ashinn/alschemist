@@ -18,7 +18,9 @@
    define-chronology
    ;; chronology internals
    make-chronology chronology? chronology-known-field?
-   chronology-name chronology-fields chronology-virtual
+   chronology-explicit-field? chronology-virtual-field?
+   chronology-field<? chronology-field>?
+   chronology-name chronology-fields chronology-virtual chronology-durations
    chronology-constructor chronology-to-instant chronology-from-instant
    chronology-format chronology-messages
    ;; field internals
@@ -26,5 +28,7 @@
    chrono-field-name chrono-field-getter
    chrono-field-lb chrono-field-ub chrono-field-get-lb chrono-field-get-ub
    chrono-field-updater chrono-field-adjuster chrono-field-default
-   chrono-field-upper-bound chrono-field-lower-bound)
+   chrono-field-upper-bound chrono-field-lower-bound
+   virtual-field? virtual-field-name
+   virtual-field-getter virtual-field-granularity)
   (include "base.scm"))

@@ -241,25 +241,33 @@
   (virtual
    (day-of-week
     (lambda (t)
-      (day-of-week (datetime-year t) (datetime-month t) (datetime-day t))))
+      (day-of-week (datetime-year t) (datetime-month t) (datetime-day t)))
+    'day)
    (days-in-month
     (lambda (t)
-      (month-day-upper-bound (datetime-year t) (datetime-month t))))
+      (month-day-upper-bound (datetime-year t) (datetime-month t)))
+    'month)
    (julian-day
     (lambda (t)
       (gregorian->julian-day-number
-       (datetime-year t) (datetime-month t) (datetime-day t))))
+       (datetime-year t) (datetime-month t) (datetime-day t)))
+    'day)
    (day-of-year
     (lambda (t)
-      (day-of-year (datetime-year t) (datetime-month t) (datetime-day t))))
+      (day-of-year (datetime-year t) (datetime-month t) (datetime-day t)))
+    'day)
    (week-of-month
     (lambda (t)
-      (week-of-month (datetime-year t) (datetime-month t) (datetime-day t))))
+      (week-of-month (datetime-year t) (datetime-month t) (datetime-day t)))
+    'day)
    (week-of-year
     (lambda (t)
-      (week-of-year (datetime-year t) (datetime-month t) (datetime-day t))))
+      (week-of-year (datetime-year t) (datetime-month t) (datetime-day t)))
+    'day)
    ;; (local-time-offset )
    )
+  (durations
+   (week day 7))
   (to-instant
    gregorian->instant)
   (from-instant
@@ -281,23 +289,31 @@
   (virtual
    (day-of-week
     (lambda (t)
-      (day-of-week (date-year t) (date-month t) (date-day t))))
+      (day-of-week (date-year t) (date-month t) (date-day t)))
+    'day)
    (days-in-month
     (lambda (t)
-      (month-day-upper-bound (date-year t) (date-month t))))
+      (month-day-upper-bound (date-year t) (date-month t)))
+    'month)
    (julian-day
     (lambda (t)
       (gregorian->julian-day-number
-       (date-year t) (date-month t) (date-day t))))
+       (date-year t) (date-month t) (date-day t)))
+    'day)
    (day-of-year
     (lambda (t)
-      (day-of-year (date-year t) (date-month t) (date-day t))))
+      (day-of-year (date-year t) (date-month t) (date-day t)))
+    'day)
    (week-of-month
     (lambda (t)
-      (week-of-month (date-year t) (date-month t) (date-day t))))
+      (week-of-month (date-year t) (date-month t) (date-day t)))
+    'day)
    (week-of-year
     (lambda (t)
-      (week-of-year (date-year t) (date-month t) (date-day t)))))
+      (week-of-year (date-year t) (date-month t) (date-day t)))
+    'day))
+  (durations
+   (week day 7))
   (to-instant
    gregorian-date->instant)
   (from-instant
@@ -328,23 +344,31 @@
   (virtual
    (day-of-week
     (lambda (t)
-      (julian-day-of-week (date-year t) (date-month t) (date-day t))))
+      (julian-day-of-week (date-year t) (date-month t) (date-day t)))
+    'day)
    (days-in-month
     (lambda (t)
-      (julian-month-day-upper-bound (date-year t) (date-month t))))
+      (julian-month-day-upper-bound (date-year t) (date-month t)))
+    'month)
    (julian-day
     (lambda (t)
       (julian->julian-day-number
-       (date-year t) (date-month t) (date-day t))))
+       (date-year t) (date-month t) (date-day t)))
+    'day)
    (day-of-year
     (lambda (t)
-      (julian-day-of-year (date-year t) (date-month t) (date-day t))))
+      (julian-day-of-year (date-year t) (date-month t) (date-day t)))
+    'day)
    (week-of-month
     (lambda (t)
-      (julian-week-of-month (date-year t) (date-month t) (date-day t))))
+      (julian-week-of-month (date-year t) (date-month t) (date-day t)))
+    'day)
    (week-of-year
     (lambda (t)
-      (julian-week-of-year (date-year t) (date-month t) (date-day t)))))
+      (julian-week-of-year (date-year t) (date-month t) (date-day t)))
+    'day))
+  (durations
+   (week day 7))
   (to-instant
    julian-date->instant)
   (from-instant
