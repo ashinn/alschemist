@@ -27,12 +27,37 @@
                (end #f)
                (chronology chronology:gregorian)
                (zone #f))
-    (when chronology
-      (assert (chronology-known-field? chronology freq))
-      (assert (every (lambda (filter)
-                       (chronology-known-field? chronology (car filter)))
-                     filters)))
-    (%make-recurrence freq interval filters count start end chronology zone)))
+    (let ((checks
+           (filter
+            (lambda (f)
+              (or (eq? 'nth (car f))
+                  (chronology-virtual-field? chronology (car f))
+                  (chronology-field>? chronology (car f) freq)))
+            filters))
+          (steps
+           (append
+            (filter
+             (lambda (f)
+               (and (chronology-explicit-field? chronology (car f))
+                    (chronology-field<? chronology (car f) freq)))
+             filters)
+            ;; Add implied steps for virtual field checks on a finer
+            ;; granularity than freq and not already a step.
+            (filter-map
+             (lambda (f)
+               (and-let*
+                   ((f (if (eq? 'nth (car f)) (cadr f) f))
+                    (vf (chronology-virtual-field? chronology (car f)))
+                    (granularity (virtual-field-granularity vf))
+                    ((chronology-field<? chronology granularity freq))
+                    ((not (assq granularity filters)))
+                    (field (chronology-explicit-field? chronology
+                                                       granularity)))
+                 (cons (chrono-field-name field)
+                       (lambda (t) (chrono-field-range field t)))))
+             filters))))
+      (%make-recurrence freq interval filters count start end
+                        chronology zone checks steps))))
 
 (define (read-space-wrapped-line in)
   (let lp ((res '()))
@@ -186,39 +211,9 @@
                                   ,@(append-map cddr vals)))
                               (cons field vals)))))
                   (else #f)))
-               params))
-             (checks
-              (filter
-               (lambda (f)
-                 (or (eq? 'nth (car f))
-                     (chronology-virtual-field? chronology (car f))
-                     (chronology-field>? chronology (car f) freq)))
-               filters))
-             (steps
-              (append
-               (filter
-                (lambda (f)
-                  (and (chronology-explicit-field? chronology (car f))
-                       (chronology-field<? chronology (car f) freq)))
-                filters)
-               ;; Add implied steps for virtual field checks on a finer
-               ;; granularity than freq and not already a step.
-               (filter-map
-                (lambda (f)
-                  (and-let*
-                      ((f (if (eq? 'nth (car f)) (cadr f) f))
-                       (vf (chronology-virtual-field? chronology (car f)))
-                       (granularity (virtual-field-granularity vf))
-                       ((chronology-field<? chronology granularity freq))
-                       ((not (assq granularity filters)))
-                       (field (chronology-explicit-field? chronology
-                                                          granularity)))
-                    (cons (chrono-field-name field)
-                          (lambda (t) (chrono-field-range field t)))))
-                filters))))
-        (%make-recurrence
-         freq interval filters count start end chronology time-zone
-         checks steps)))))
+               params)))
+        (make-recurrence
+         freq interval filters count start end chronology time-zone)))))
 
 (define (recurrence->string recurrence)
   (error "recurrence->string is unimplemented"))
