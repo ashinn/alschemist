@@ -20,6 +20,11 @@
                  (temporal-adjust
                   (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
                   'hour 1)))
+            (test `(,time-zone:utc 2021 4 1 0 30 0 0 0)
+                (temporal->list
+                 (temporal-add-duration
+                  (list->temporal `(,time-zone:utc 2021 2 28 23 30 0 0 0))
+                  (make-duration '((day . 31) (hour . 1))))))
             (test `(2021 9 8)
                 (temporal->list
                  (instant->temporal instant chronology:gregorian-date)))

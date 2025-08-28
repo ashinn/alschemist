@@ -273,6 +273,27 @@
 (define (chronology-field>? chronology field1 field2)
   (positive? (chronology-field-cmp chronology field1 field2)))
 
+(define-record-type Duration
+  (%make-duration field-counts chronology)
+  duration?
+  (field-counts duration-field-counts)
+  (chronology duration-chronology))
+
+(define (duration->alist duration)
+  (map (lambda (cell) (cons (car cell) (cdr cell)))
+       (duration-field-counts duration)))
+
+(define make-duration
+  (opt-lambda (field-counts (chronology #f))
+    (when chronology
+      (for-each
+       (lambda (field-count)
+         (assert
+          (or (chronology-known-field? chronology (car field-count))
+              (assq (car field-count) (chronology-durations chronology)))))
+       field-counts))
+    (%make-duration field-counts chronology)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;> Returns the exact current number of nanoseconds since the POSIX epoch.
@@ -452,6 +473,13 @@
               (cdr fields)
               (cons (car ls) prev)
               (cons (car fields) prev-fields)))))))))
+
+(define (temporal-add-duration t duration)
+  (assert (or (not (duration-chronology duration))
+              (eq? (temporal-chronology t) (duration-chronology duration))))
+  (fold (lambda (cell t) (temporal-adjust t (car cell) (cdr cell)))
+        t
+        (duration-field-counts duration)))
 
 (define chronologies (make-hash-table eq?))
 

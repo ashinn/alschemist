@@ -4,12 +4,6 @@
   temporal-macro?
   (proc temporal-macro-proc))
 
-(define-record-type Virtual-Field
-  (make-virtual-field name proc)
-  virtual-field?
-  (name virtual-field-name)
-  (proc virtual-field-proc))
-
 (define-record-type Unparseable
   (%make-unparseable unparse parse min-length max-length kons)
   unparseable?
@@ -284,8 +278,9 @@
                  (error "circular reference in temporal format" fmt x)
                  (analyze y))))
        ((and (symbol? x) (chronology-get-field chrono x)))
-       ((and (symbol? x) (assq x (chronology-virtual chrono)))
-        => (lambda (cell) (make-virtual-field x (cdr cell))))
+       ((and (symbol? x) (find (lambda (vf) (eq? x (virtual-field-name vf)))
+                               (chronology-virtual chrono)))
+        )
        ((chrono-field? x) x)
        ((virtual-field? x) x)
        ((unparseable? x) x)
@@ -334,7 +329,7 @@
                    ((chrono-field? a)
                     ((chrono-field-getter a) t))
                    ((virtual-field? a)
-                    ((virtual-field-proc a) t))
+                    ((virtual-field-getter a) t))
                    ((procedure? a)
                     (a t))
                    ((and (pair? a) (unparseable? (car a)))
@@ -351,7 +346,7 @@
         (let ((get (chrono-field-getter x)))
           (return (lambda (t out) (display (get t) out)))))
        ((virtual-field? x)
-        (return (lambda (t out) (display ((virtual-field-proc x) t) out))))
+        (return (lambda (t out) (display ((virtual-field-getter x) t) out))))
        ((and (pair? x) (unparseable? (car x)))
         (return (lambda (t out)
                   (display (apply-format t (car x) (cdr x))

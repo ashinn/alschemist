@@ -41,6 +41,8 @@
    temporal->instant instant->temporal
    temporal->list list->temporal
    temporal->alist alist->temporal try-alist->temporal
+   make-duration duration? duration-field-counts duration-chronology
+   duration->alist temporal-add-duration
    ;; defining new chronologies
    define-chronology
    ;; chronology internals
