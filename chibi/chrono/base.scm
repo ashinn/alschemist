@@ -302,7 +302,7 @@
 
 ;;> Returns \scheme{#t} iff \var{x} is a temporal.
 (define (temporal? x)
-  (and (record? x) (temporal-chronology x) #t))
+  (and (record? x) (hash-table-contains? chronologies (record-rtd x)) #t))
 
 ;;> Returns the value of \var{field} in the temporal \var{t}, or
 ;;> signals an error if \var{field} is unknown in \var{t}'s
@@ -485,6 +485,7 @@
 
 ;;> Returns the chronology associated with temporal \var{t}.
 (define (temporal-chronology t)
+  (assert (temporal? t))
   (hash-table-ref chronologies (record-rtd t)))
 
 ;;> Returns the list of chronology fields for temporal \var{t}.

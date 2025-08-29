@@ -1,6 +1,6 @@
 
 (define-library (chibi chrono schedule-test)
-  (import (scheme base)
+  (import (scheme base) (scheme write)
           (chibi chrono)
           (chibi chrono recurrence)
           (chibi chrono schedule)
@@ -35,4 +35,25 @@
                    (lambda (when what acc)
                      (cons (cons what (->date-string when)) acc))
                    '())))
-              (reverse res)))))))
+              (reverse res)))
+        (test '((q . "2050-01-01") (q . "2050-04-01")
+                (d . "2050-06-01") (d . "2050-06-02") (d . "2050-06-03")
+                (d . "2050-06-04") (d . "2050-06-05") (d . "2050-06-06")
+                (d . "2050-06-07") (d . "2050-06-08"))
+            ;; Run the quarterly up until the start of the daily,
+            ;; which then runs for 1 week.
+            (let ((tl (time-line
+                       (@ "2050-01-01")
+                       (make-quarterly-schedule "quarterly" 'q)
+                       (@ "2050-06-01")
+                       (make-daily-schedule "daily" 'd)
+                       (make-duration '((week . 1))))))
+              (let-values
+                  (((res tt)
+                    (time-table-project
+                     (time-table tl)
+                     (@ "2050-08-01")
+                     (lambda (when what acc)
+                       (cons (cons what (->date-string when)) acc))
+                     '())))
+                (reverse res))))))))

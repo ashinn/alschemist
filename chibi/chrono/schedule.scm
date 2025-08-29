@@ -29,6 +29,15 @@
       (and (temporal<=? (schedule-when a) (schedule-when b))
            (string<? (schedule-name a) (schedule-name b)))))
 
+(define schedule-resolve-when
+  (opt-lambda (schedule (chronology chronology:gregorian))
+    (if (schedule-when schedule)
+        schedule
+        (make-schedule (schedule-name schedule)
+                       (schedule-what schedule)
+                       (instant->temporal (current-second) chronology)
+                       (schedule-next schedule)))))
+
 (define (make-time-table)
   (%make-time-table
    (mapping (make-comparator schedule? schedule=? schedule<? hash))))
@@ -39,17 +48,19 @@
 (define (time-table-add tt schedule)
   (if (not schedule)
       tt
-      (%make-time-table
-       (mapping-set (time-table-schedules tt)
-                    schedule
-                    schedule))))
+      (let ((schedule (schedule-resolve-when schedule)))
+        (%make-time-table
+         (mapping-set (time-table-schedules tt)
+                      schedule
+                      schedule)))))
 
 (define (time-table-add! tt schedule)
-  (time-table-schedules-set! tt
-                             (mapping-set (time-table-schedules tt)
-                                          schedule
-                                          schedule))
-  tt)
+  (let ((schedule (schedule-resolve-when schedule)))
+    (time-table-schedules-set! tt
+                               (mapping-set (time-table-schedules tt)
+                                            schedule
+                                            schedule))
+    tt))
 
 (define (list->time-table schedules)
   (let lp ((tt (make-time-table))
@@ -57,7 +68,9 @@
     (cond
      ((null? ls)
       tt)
-     ((list? (car ls))
+     ((null? (car ls))
+      (lp tt (cdr ls)))
+     ((pair? (car ls))
       (lp (lp tt (car ls)) (cdr ls)))
      (else
       (lp (time-table-add tt (car ls))
@@ -127,64 +140,138 @@
                        (else #f)))))
       (next what (or start (recurrence-start rec))))))
 
-(define (limited-schedule next o)
-  (if (pair? o)
-      (let ((end (car o)))
-        (lambda (what when)
-          (let ((schedule (next what when)))
-            (and (temporal<? when (schedule-when schedule))
-                 (temporal<? (schedule-when schedule) end)
-                 schedule))))
+(define (limited-schedule next end)
+  (if end
+      (lambda (what when)
+        (let ((schedule (next what when)))
+          (and (temporal<? (schedule-when schedule) end)
+               schedule)))
       next))
+
+;;> Takes a list of schedules optionally interleaved with temporals or
+;;> durations, and ensures the schedules run sequentially, and each
+;;> has a resolved start, and all but the last have an end.
+(define (time-line . args)
+  (let lp ((ls args)
+           (res '())
+           (from #f))
+    (cond
+     ((null? ls)
+      (reverse res))
+     ((null? (car ls))
+      (lp (cdr ls) res from))
+     ((pair? (car ls))
+      (lp (append (car ls) (cdr ls)) res from))
+     ((schedule? (car ls))
+      (let ((res
+             (cond
+              ((schedule-when (car ls))
+               (cons (car ls) res))
+              ((or from (and (pair? res) (schedule-when (car res))))
+               => (lambda (start)
+                    (cons (make-schedule (schedule-name (car ls))
+                                         (schedule-what (car ls))
+                                         start
+                                         (schedule-next (car ls)))
+                          res)))
+              (else
+               (cons (schedule-resolve-when
+                      (make-schedule (schedule-name (car ls))
+                                     (schedule-what (car ls))
+                                     #f
+                                     (schedule-next (car ls))))
+                     res)))))
+        (lp (cdr ls) res #f)))
+     ((temporal? (car ls))
+      (lp (cdr ls)
+          (if (pair? res)
+              (cons
+               (letrec ((next
+                         (limited-schedule
+                          (lambda (what when)
+                            (let ((schedule
+                                   ((schedule-next (car res)) what when)))
+                              (and schedule
+                                   (make-schedule (schedule-name schedule)
+                                                  (schedule-what schedule)
+                                                  (schedule-when schedule)
+                                                  next))))
+                          (car ls))))
+                 (make-schedule (schedule-name (car res))
+                                (schedule-what (car res))
+                                (schedule-when (car res))
+                                next))
+               (cdr res))
+              res)
+          (car ls)))
+     ((and (duration? (car ls)) from)
+      (lp (cons (temporal-add-duration from (car ls)) (cdr ls))
+          res
+          #f))
+     ((and (duration? (car ls)) (null? res))
+      (lp (cdr ls) res from))
+     ((duration? (car ls))
+      (lp (cons (temporal-add-duration (schedule-when (car res)) (car ls))
+                (cdr ls))
+          res
+          #f))
+     (else
+      (error "expected a schedule, temporal or duration but got" (car ls))))))
 
 ;; The following convenience utilities generate simple schedules
 ;; without relying on full recurrences.
 
 ;;> Returns a schedule which runs only once.
-(define (make-one-time-schedule name what start)
-  (make-schedule name what start (lambda (what when) #f)))
+(define make-one-time-schedule
+  (opt-lambda (name what (start #f))
+    (make-schedule name what start (lambda (what when) #f))))
 
 ;;> Returns a schedule which runs daily.
-(define (make-daily-schedule name what start . o)
-  (letrec ((next
-            (limited-schedule
-             (lambda (what when)
-               (make-schedule name what (temporal-adjust when 'day 1) next))
-             o)))
-    (make-schedule name what start next)))
+(define make-daily-schedule
+  (opt-lambda (name what (start #f) (end #f))
+    (letrec ((next
+              (limited-schedule
+               (lambda (what when)
+                 (make-schedule name what (temporal-adjust when 'day 1) next))
+               end)))
+      (make-schedule name what start next))))
 
 ;;> Returns a schedule which runs weekly.
-(define (make-weekly-schedule name what start . o)
-  (letrec ((next
-            (limited-schedule
-             (lambda (what when)
-               (make-schedule name what (temporal-adjust when 'day 7) next))
-             o)))
-    (make-schedule name what start next)))
+(define make-weekly-schedule
+  (opt-lambda (name what (start #f) (end #f))
+    (letrec ((next
+              (limited-schedule
+               (lambda (what when)
+                 (make-schedule name what (temporal-adjust when 'day 7) next))
+               end)))
+      (make-schedule name what start next))))
 
 ;;> Returns a schedule which runs monthly.
-(define (make-monthly-schedule name what start . o)
-  (letrec ((next
-            (limited-schedule
-             (lambda (what when)
-               (make-schedule name what (temporal-adjust when 'month 1) next))
-             o)))
-    (make-schedule name what start next)))
+(define make-monthly-schedule
+  (opt-lambda (name what (start #f) (end #f))
+    (letrec ((next
+              (limited-schedule
+               (lambda (what when)
+                 (make-schedule name what (temporal-adjust when 'month 1) next))
+               end)))
+      (make-schedule name what start next))))
 
 ;;> Returns a schedule which runs quarterly.
-(define (make-quarterly-schedule name what start . o)
-  (letrec ((next
-            (limited-schedule
-             (lambda (what when)
-               (make-schedule name what (temporal-adjust when 'month 3) next))
-             o)))
-    (make-schedule name what start next)))
+(define make-quarterly-schedule
+  (opt-lambda (name what (start #f) (end #f))
+    (letrec ((next
+              (limited-schedule
+               (lambda (what when)
+                 (make-schedule name what (temporal-adjust when 'month 3) next))
+               end)))
+      (make-schedule name what start next))))
 
 ;;> Returns a schedule which runs yearly.
-(define (make-yearly-schedule name what start . o)
-  (letrec ((next
-            (limited-schedule
-             (lambda (what when)
-               (make-schedule name what (temporal-adjust when 'year 1) next))
-             o)))
-    (make-schedule name what start next)))
+(define make-yearly-schedule
+  (opt-lambda (name what (start #f) (end #f))
+    (letrec ((next
+              (limited-schedule
+               (lambda (what when)
+                 (make-schedule name what (temporal-adjust when 'year 1) next))
+               end)))
+      (make-schedule name what start next))))

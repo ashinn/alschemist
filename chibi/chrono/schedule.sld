@@ -7,7 +7,7 @@
           (srfi 146)
           (srfi 227)
           (chibi bench)
-          (chibi chrono base)
+          (chibi chrono)
           (chibi chrono recurrence))
   (export make-schedule schedule?
           schedule-name schedule-what schedule-when schedule-next
@@ -16,7 +16,7 @@
           time-table-schedules time-table-schedules-set!
           time-table-add time-table-add! time-table-next
           time-table-project time-table-run
-          list->time-table
+          list->time-table time-line
           recurrence->schedule make-one-time-schedule
           make-daily-schedule make-weekly-schedule
           make-monthly-schedule make-quarterly-schedule
