@@ -96,6 +96,13 @@
     (assert (symbol? type))
     (%make-asset name value unit interest type)))
 
+(define (asset-copy asset)
+  (%make-asset (asset-name asset)
+               (asset-value asset)
+               (asset-unit asset)
+               (asset-interest asset)
+               (asset-type asset)))
+
 (define (asset-stock? asset)
   (stock? (asset-unit asset)))
 
@@ -143,6 +150,10 @@
   (name portfolio-name portfolio-name-set!)
   (assets portfolio-assets portfolio-assets-set!))
 
+(define (portfolio-copy pf)
+  (make-portfolio (portfolio-name pf)
+                  (map asset-copy (portfolio-assets pf))))
+
 (define (portfolio-flat-assets pf)
   (append-map (lambda (a)
                 (if (portfolio? a)
@@ -170,7 +181,7 @@
 ;; If amount is negative, subtracts that amount from assets of the
 ;; matching unit in order until the amount is fulfilled.
 (define (portfolio-inc! pf amount unit . o)
-  (log-trace  "portfolio-inc! " (portfolio-name pf) " " amount " " unit " " o)
+  (log-trace "portfolio-inc! " (portfolio-name pf) " " amount " " unit " " o)
   (cond
    ((zero? amount))
    ((positive? amount)

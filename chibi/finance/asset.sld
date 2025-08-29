@@ -14,9 +14,10 @@
    stock-price-set! stock-dividend-yield-set! stock-cagr-set!
    stock-shares-for-amount
    make-asset asset? asset-name asset-value asset-type asset-unit
-   asset-interest asset-value-in asset-stock?
+   asset-interest asset-value-in asset-stock? asset-copy
    asset-inc! asset-mul! asset-mul/lb! asset-value-set!
-   make-portfolio portfolio? portfolio-name portfolio-assets
+   make-portfolio portfolio? portfolio-copy
+   portfolio-name portfolio-assets
    portfolio-value-in portfolio-values->alist
    portfolio-values-by-type portfolio-flat-assets
    portfolio-add-asset! portfolio-remove-asset! portfolio-inc!

@@ -113,12 +113,15 @@
   (extract-dividend-yield
    (if (symbol? symbol) (get-stock-quote symbol) symbol)))
 
-(define (format-currency-symbol from to)
+(define (->currency-code x)
+  (symbol->string (if (currency? x) (currency-code x) x)))
+
+(define (format-currency-code from to)
   (string->symbol
-   (string-append (symbol->string from) (symbol->string to) "=X")))
+   (string-append (->currency-code from) (->currency-code to) "=X")))
 
 (define (get-exchange-quote from to)
-  (get-stock-quote (format-currency-symbol from to)))
+  (get-stock-quote (format-currency-code from to)))
 
 (define (get-exchange-rate from to)
   (extract-price (get-exchange-quote from to)))

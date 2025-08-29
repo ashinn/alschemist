@@ -6,6 +6,7 @@
           (srfi 98)
           (srfi 130)
           (srfi 227)
+          (chibi finance currency)
           (chibi io)
           (chibi json)
           (chibi log)
