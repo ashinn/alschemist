@@ -22,12 +22,15 @@
 
 (define (schedule=? a b)
   (and (equal? (schedule-name a) (schedule-name b))
-       (temporal=? (schedule-when a) (schedule-when b))))
+       (temporal=? (schedule-when a) (schedule-when b))
+       (equal? (schedule-what a) (schedule-what b))))
 
 (define (schedule<? a b)
   (or (temporal<? (schedule-when a) (schedule-when b))
       (and (temporal<=? (schedule-when a) (schedule-when b))
-           (string<? (schedule-name a) (schedule-name b)))))
+           (or (string<? (schedule-name a) (schedule-name b))
+               (and (string=? (schedule-name a) (schedule-name b))
+                    (< (hash (schedule-what a)) (hash (schedule-what b))))))))
 
 (define schedule-resolve-when
   (opt-lambda (schedule (chronology chronology:gregorian))
@@ -164,23 +167,18 @@
       (lp (append (car ls) (cdr ls)) res from))
      ((schedule? (car ls))
       (let ((res
-             (cond
-              ((schedule-when (car ls))
-               (cons (car ls) res))
-              ((or from (and (pair? res) (schedule-when (car res))))
-               => (lambda (start)
-                    (cons (make-schedule (schedule-name (car ls))
-                                         (schedule-what (car ls))
-                                         start
-                                         (schedule-next (car ls)))
-                          res)))
-              (else
-               (cons (schedule-resolve-when
-                      (make-schedule (schedule-name (car ls))
-                                     (schedule-what (car ls))
-                                     #f
-                                     (schedule-next (car ls))))
-                     res)))))
+             (cons
+              (cond
+               ((schedule-when (car ls))
+                (car ls))
+               (else
+                (schedule-resolve-when
+                 (make-schedule (schedule-name (car ls))
+                                (schedule-what (car ls))
+                                (or from (and (pair? res)
+                                              (schedule-when (car res))))
+                                (schedule-next (car ls))))))
+              res)))
         (lp (cdr ls) res #f)))
      ((temporal? (car ls))
       (lp (cdr ls)
@@ -225,6 +223,17 @@
 (define make-one-time-schedule
   (opt-lambda (name what (start #f))
     (make-schedule name what start (lambda (what when) #f))))
+
+;;> Returns a schedule which runs in fixed duration increments.
+(define make-duration-schedule
+  (opt-lambda (name duration what (start #f) (end #f))
+    (letrec
+        ((next
+          (limited-schedule
+           (lambda (what when)
+             (make-schedule name what (temporal-add-duration when duration) next))
+           end)))
+      (make-schedule name what start next))))
 
 ;;> Returns a schedule which runs daily.
 (define make-daily-schedule

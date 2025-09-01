@@ -5,6 +5,7 @@
           (srfi 98)
           (srfi 227)
           (chibi assert)
+          (chibi finance currency)
           (chibi finance quotes)
           (chibi memoize)
           (chibi log))
@@ -19,8 +20,8 @@
    make-portfolio portfolio? portfolio-copy
    portfolio-name portfolio-assets
    portfolio-value-in portfolio-values->alist
-   portfolio-values-by-type portfolio-flat-assets
-   portfolio-add-asset! portfolio-remove-asset! portfolio-inc!
-   portfolio-sell! portfolio-buy! portfolio-liquidate!
-   finance-offline-data?)
+   portfolio-values-by-type portfolio-value-by-type
+   portfolio-flat-assets portfolio-add-asset! portfolio-remove-asset!
+   portfolio-inc! portfolio-sell! portfolio-buy! portfolio-liquidate!
+   finance-offline-data? fx)
   (include "asset.scm"))

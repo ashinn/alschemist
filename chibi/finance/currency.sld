@@ -4,5 +4,6 @@
   (export currency? currency-name currency-code
           currency-symbol currency-subunit currency-precision
           symbol->currency currency-amount->short-string
+          current-currency
           USD EUR GBP JPY)
   (include "currency.scm"))

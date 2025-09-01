@@ -18,7 +18,7 @@
           time-table-project time-table-run
           list->time-table time-line
           recurrence->schedule make-one-time-schedule
-          make-daily-schedule make-weekly-schedule
-          make-monthly-schedule make-quarterly-schedule
-          make-yearly-schedule)
+          make-duration-schedule make-daily-schedule
+          make-weekly-schedule make-monthly-schedule
+          make-quarterly-schedule make-yearly-schedule)
   (include "schedule.scm"))

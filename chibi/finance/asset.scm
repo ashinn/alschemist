@@ -226,7 +226,7 @@
                              (and (not (eq? 'real-estate (asset-type a)))
                                   (eq? (asset-unit a) unit)))
                            (portfolio-flat-assets pf))
-                     (portfolio-create-asset! pf unit))))
+                     (portfolio-create-asset! pf 0 unit))))
             (asset-inc! neg-asset (- needed)))))
        ((eq? 'real-estate (asset-type (car ls)))
         (lp (cdr ls) needed res liquid-only?))
@@ -367,9 +367,21 @@
       (cons (cons type (asset-value-in asset currency rate)) res)))))
 
 (define portfolio-values-by-type
-  (opt-lambda (pf currency (default-rates '()))
+  (opt-lambda (pf (currency (current-currency)) (default-rates '()))
     (fold (lambda (asset res)
             (let ((rate (assq-ref default-rates (asset-currency asset))))
               (add-asset-by-type! res asset currency rate)))
           '()
           (portfolio-flat-assets pf))))
+
+(define portfolio-value-by-type
+  (opt-lambda (pf type currency (default-rates '()))
+    (fold (lambda (asset total)
+            (+ total
+               (asset-value-in
+                asset
+                currency
+                (assq-ref default-rates (asset-currency asset)))))
+          0
+          (filter (lambda (a) (eq? type (asset-type a)))
+                  (portfolio-flat-assets pf)))))
