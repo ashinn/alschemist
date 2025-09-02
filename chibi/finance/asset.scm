@@ -41,7 +41,6 @@
   (currency stock-currency)
   (dividend-yield stock-dividend-yield stock-dividend-yield-set!)
   (cagr stock-cagr stock-cagr-set!)
-  ;; annualized
   (volatility stock-volatility stock-volatility-set!))
 
 (define make-stock
@@ -174,6 +173,10 @@
                      unit)))
     (portfolio-assets-set! pf (cons asset (portfolio-assets pf)))
     asset))
+
+(define (portfolio-get-asset pf name)
+  (find (lambda (a) (and (asset? a) (equal? name (asset-name a))))
+        (portfolio-flat-assets pf)))
 
 ;; If amount is positive, adds that amount to the first asset in the
 ;; portfolio of the matching unit, creating a new asset as needed.

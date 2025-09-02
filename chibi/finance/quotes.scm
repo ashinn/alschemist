@@ -125,3 +125,83 @@
 
 (define (get-exchange-rate from to)
   (extract-price (get-exchange-quote from to)))
+
+(define quote-history-url
+  "https://data.nasdaq.com/api/v3/datatables/WIKI/PRICES.csv")
+
+(define nasdaq-api-key
+  (make-parameter (or (get-environment-variable "NASDAQ_DL_API_KEY") "")))
+
+(define (get-live-stock-history symbol)
+  (assert (and (string? (nasdaq-api-key)) (not (equal? "" (nasdaq-api-key))))
+          "A Nasdaq Data Link API KEY is required for stock history (set your NASDAQ_DL_API_KEY env var)")
+  (let ((res
+         (map
+          (lambda (x)
+            (list->vector
+             (map (lambda (c) (or (string->number c) c))
+                  (string-split x ","))))
+          (shell->string-list
+           (curl -s -L -A ,(current-user-agent)
+                 ,(format-uri-query
+                   quote-history-url
+                   `(("ticker" . ,(symbol->string symbol))
+                     ("api_key" . ,(nasdaq-api-key)))))))))
+    (cons (vector-map string->symbol (car res))
+          (reverse (cdr res)))))
+
+(define-memoized/sqlite3 (get-stock-history symbol)
+  ;; default 1 month TTL
+  ttl-millis: (or (cond ((get-environment-variable "QUOTE_HISTORY_TTL_MILLIS")
+                         => string->number)
+                        (else #f))
+                  (* 30 24 60 60 1000))
+  (get-live-stock-history symbol))
+
+(define (temporal-diff/years end start)
+  ;; TODO: utility to subtract temporals and get a duration
+  (/ (- (temporal->instant end)
+        (temporal->instant start))
+     (* 365.25 24 60 60)))
+
+;; returns the CAGR for the full period and the monthly volatility
+(define (extract-cagr quotes)
+  (let ((price-field-index
+         (or (vector-index (lambda (x) (eq? x 'adj_close)) (car quotes))
+             (vector-index (lambda (x) (eq? x 'close)) (car quotes))
+             (vector-index number? (cadr quotes))
+             (error "couldn't find price column" (car quotes) (cadr quotes))))
+        (date-field-index
+         (or (vector-index (lambda (x) (eq? x 'date)) (car quotes))
+             (vector-index (lambda (x)
+                             (guard (exn (else #f))
+                               (string->temporal x)))
+                           (cadr quotes))
+             (error "couldn't find date column" (car quotes) (cadr quotes)))))
+    (define (extract-monthly-diffs ls res cur-month start-price price)
+      (cond
+       ((null? ls)
+        (let ((res (if cur-month (cons (- price start-price) res) res)))
+          (reverse res)))
+       (else
+        (let ((month (substring (vector-ref (car ls) date-field-index)
+                                0 7))
+              (new-price (vector-ref (car ls) price-field-index)))
+          (cond
+           ((equal? month cur-month)
+            (extract-monthly-diffs (cdr ls) res cur-month start-price new-price))
+           (else
+            (let ((res (if cur-month (cons (- price start-price) res) res)))
+              (extract-monthly-diffs (cdr ls) res month new-price new-price))))))))
+    (let ((start (string->temporal (vector-ref (cadr quotes) date-field-index)))
+          (start-price (vector-ref (cadr quotes) price-field-index))
+          (end (string->temporal (vector-ref (last quotes) date-field-index)))
+          (end-price (vector-ref (last quotes) price-field-index)))
+      (values (- (exp (/ (log (- end-price start-price))
+                         (temporal-diff/years end start)))
+                 1)
+              (stdev (extract-monthly-diffs (cdr quotes) '() #f 0 0))))))
+
+(define (get-stock-cagr symbol)
+  (extract-cagr
+   (if (symbol? symbol) (get-stock-history symbol) symbol)))

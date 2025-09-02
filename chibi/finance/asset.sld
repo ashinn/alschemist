@@ -18,7 +18,7 @@
    asset-interest asset-value-in asset-stock? asset-copy
    asset-inc! asset-mul! asset-mul/lb! asset-value-set!
    make-portfolio portfolio? portfolio-copy
-   portfolio-name portfolio-assets
+   portfolio-name portfolio-assets portfolio-get-asset
    portfolio-value-in portfolio-values->alist
    portfolio-values-by-type portfolio-value-by-type
    portfolio-flat-assets portfolio-add-asset! portfolio-remove-asset!
