@@ -103,7 +103,7 @@
           (lambda () (time-table-next tt))
         (lambda (schedule tt2)
           (cond
-           ((temporal>? (schedule-when schedule) until)
+           ((or (not schedule) (temporal>? (schedule-when schedule) until))
             (values acc tt2))
            (else
             (let ((acc (kons (schedule-when schedule)
@@ -147,7 +147,8 @@
   (if end
       (lambda (what when)
         (let ((schedule (next what when)))
-          (and (temporal<? (schedule-when schedule) end)
+          (and schedule
+               (temporal<? (schedule-when schedule) end)
                schedule)))
       next))
 
