@@ -37,6 +37,34 @@
 (define black-rook   (piece-complement piece-rook))
 (define black-queen  (piece-complement piece-queen))
 
+(define (piece-mobility bd index base-piece player)
+  (let ((sum 0))
+    (define (add! dst p)
+      (unless (and (positive? p) (= player (piece-player p)))
+        (set! sum (+ sum 1))))
+    (cond
+     ((eq? base-piece piece-knight)
+      (for-each-knight bd index add!))
+     ((eq? base-piece piece-bishop)
+      (for-each-diagonal* bd player-white index add!))
+     ((eq? base-piece piece-rook)
+      (for-each-orthogonal* bd player-white index add!))
+     ;; tricky - want to discourage queen development
+     ((eq? base-piece piece-queen)
+      (for-each-diagonal* bd player-white index add!)
+      (for-each-orthogonal* bd player-white index add!))
+     ;; don't concern with mobility for kings and pawns,
+     ;; but consider other heuristics later
+     ;; ((eq? base-piece piece-pawn) 0)
+     ;; ((eq? base-piece piece-king) 0)
+     (else 0))
+    sum))
+
+(define (white-piece-mobility bd index piece)
+  (if (piece-black? piece)
+      (- (piece-mobility bd index (piece-base piece) player-black))
+      (piece-mobility bd index piece player-white)))
+
 ;; players
 
 (define (player-complement player) (bitwise-xor player #b1000))
@@ -74,9 +102,13 @@
         (else #f)))
 
 (define (x->piece x . opt)
-  (if (and (pair? opt) (player-black? (car opt)))
-    (piece-black (x->base-piece x))
-    (x->base-piece x)))
+  (cond
+   ((x->base-piece x)
+    => (lambda (base-piece)
+         (if (and (pair? opt) (player-black? (car opt)))
+             (piece-black base-piece)
+             base-piece)))
+   (else #f)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; moves are fixnums combining the source and destination positions
@@ -128,10 +160,11 @@
 
 ;; additional board info stored in invalid squares
 
-(define (board-player-to-move bd)
-  (bytevector-u8-ref bd #b1000))
-(define (board-player-to-move-set! bd player)
-  (bytevector-u8-set! bd #b1000 player))
+;; unused
+;; (define (board-player-to-move bd)
+;;   (bytevector-u8-ref bd #b1000))
+;; (define (board-player-to-move-set! bd player)
+;;   (bytevector-u8-set! bd #b1000 player))
 
 (define (board-en-passant-capturable-file bd)
   (bytevector-u8-ref bd #b1001))
@@ -221,7 +254,14 @@
             (else (print (current-output-port) opt))))
     (print (current-output-port) '())))
 
-(define chess-game vector)
+(define-record-type Chess-Game
+  (chess-game board history heuristic move-sets boards)
+  chess-game?
+  (board chess-game-board chess-game-board-set!)
+  (history chess-game-history chess-game-history-set!)
+  (heuristic chess-game-heuristic chess-game-heuristic-set!)
+  (move-sets chess-game-move-sets chess-game-move-sets-set!)
+  (boards chess-game-boards chess-game-boards-set!))
 
 (define (make-chess-game . opt)
   (let ((bd (if (pair? opt) (car opt) (initial-chess-board))))
@@ -245,17 +285,17 @@
                 (chess-game-move-sets game)
                 (chess-game-boards game))))
 
-(define (chess-game-board game) (vector-ref game 0))
-(define (chess-game-history game) (vector-ref game 1))
-(define (chess-game-heuristic game) (vector-ref game 2))
-(define (chess-game-move-sets game) (vector-ref game 3))
-(define (chess-game-boards game) (vector-ref game 4))
 (define (chess-game-prev game)
   (let ((v (chess-game-history game)))
     (and (pair? v) (car v))))
 
-(define (chess-game-move-sets-set! game x) (vector-set! game 3 x))
-(define (chess-game-boards-set! game x) (vector-set! game 4 x))
+(define (chess-game-last-player-to-move game)
+  (piece-player
+   (bytevector-u8-ref (chess-game-board game)
+                      (move-destination (chess-game-prev game)))))
+
+(define (chess-game-player-to-move game)
+  (player-complement (chess-game-last-player-to-move game)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; describing movement & notation
@@ -320,11 +360,11 @@
     (let* ((str move)
            (len (string-length str)))
       (cond
-       ((string=? str "O-O")
+       ((or (string=? str "O-O") (string=? str "o-o"))
         (if (equal? player player-white)
             (chess-parse-move game "e1-g1" player)
             (chess-parse-move game "e8-g8" player)))
-       ((string=? str "O-O-O")
+       ((or (string=? str "O-O-O") (string=? str "o-o-o"))
         (if (equal? player player-white)
             (chess-parse-move game "e1-c1" player)
             (chess-parse-move game "e8-c8" player)))
@@ -421,6 +461,7 @@
                (= 2 (abs (- (index->rank from) (index->rank to)))))
           (index->file from)
           8))
+  ;; TODO: update current player info?
   bd)
 
 (define (chess-move bd from to)
@@ -500,7 +541,8 @@
 
 (define-syntax push!
   (syntax-rules ()
-    ((push var expr) (set! var (cons expr var)))))
+    ((push var expr)
+     (set! var (cons expr var)))))
 
 ;; pieces that can move to a given square
 (define (chess-reverse-moves bd index player)
@@ -520,13 +562,13 @@
         ;; pawns
         (when (if white? (>= index 32) (<= index 87))
           (let ((shift (if white? - +)))
-            (if (and (not (zero? dest-piece))
-                     (not (= player (piece-player dest-piece))))
-                (begin                  ; pawn captures
-                  (let ((i (shift index 15)))
-                    (if (= my-pawn (bytevector-u8-ref bd i)) (push! res i)))
-                  (let ((i (shift index 17)))
-                    (if (= my-pawn (bytevector-u8-ref bd i)) (push! res i)))))
+            (when (and (not (zero? dest-piece))
+                       (not (= player (piece-player dest-piece))))
+              ;; pawn captures
+              (let ((i (shift index 15)))
+                (if (= my-pawn (bytevector-u8-ref bd i)) (push! res i)))
+              (let ((i (shift index 17)))
+                (if (= my-pawn (bytevector-u8-ref bd i)) (push! res i))))
             (when (zero? dest-piece)    ; pawn moves
               (let* ((i (shift index 16)) (p (bytevector-u8-ref bd i)))
                 (if (= my-pawn p)
@@ -704,48 +746,52 @@
          (set! offset (chess-piece-moves! bd i move-set offset)))))
     offset))
 
-(define (chess-board-moves->list bd player move-set)
-  (let ((i (chess-board-moves! bd player move-set)))
+(define (chess-board-moves->list bd player . o)
+  (let* ((move-set (if (pair? o) (car o) (make-move-set)))
+         (i (chess-board-moves! bd player move-set)))
     (vector->list move-set 0 i)))
 
 (define (chess-find-king bd player)
   (let ((my-king (player-piece player piece-king)))
     (call-with-current-continuation
      (lambda (return)
-       (board-for-each bd (lambda (i p) (if (= p my-king) (return i))))))))
+       (board-for-each bd (lambda (i p) (if (= p my-king) (return i))))
+       #f))))
+
+(define (board-checking-pieces bd defending-player)
+  (let ((index (chess-find-king bd defending-player)))
+    (if index
+        (chess-reverse-moves bd index (player-complement defending-player))
+        '())))
+
+(define (board-check? bd defending-player)
+  (pair? (board-checking-pieces bd defending-player)))
+
+(define (chess-check? game . o)
+  (let ((defending-player
+          (if (pair? o) (car o) (chess-game-player-to-move game))))
+    (pair? (board-checking-pieces (chess-game-board game) defending-player))))
 
 (define (chess-mate? game)
-  (let* ((bd (chess-game-board game))
-         (player
-          (piece-player
-           (bytevector-u8-ref bd (move-destination (chess-game-prev game)))))
-         (index (chess-find-king bd (player-complement player)))
-         (attackers
-          (chess-reverse-moves bd index player)))
-    (and (pair? attackers)
-         (not
-          (or (and (null? (cdr attackers)) ; 1 attacker, try capture
-                   (pair? (filter
-                           (lambda (from)
-                             (null? (chess-reverse-moves
-                                     (chess-game-board
-                                      (chess-game-apply-move
-                                       game (make-move from (car attackers))))
-                                     (if (= from index) (car attackers) index)
-                                     player)))
-                           (chess-reverse-moves bd (car attackers) player))))
-              (any (lambda (move) ; run away!!!
-                     (null? (chess-reverse-moves
-                             (chess-game-board
-                              (chess-game-apply-simple-move game move))
-                             move player)))
-                   (chess-piece-moves->list game index)))))))
+  ;; Check if we're in check and still in check after any move.  Note
+  ;; we record the current defending player for the next-ply checks
+  ;; since the player will have changed.
+  (and (chess-check? game)
+       (let ((bd (chess-game-board game))
+             (defending-player (chess-game-player-to-move game)))
+         (every (lambda (game) (chess-check? game defending-player))
+                (map (lambda (move) (chess-game-apply-move game move))
+                     (chess-board-moves->list
+                      bd
+                      (chess-game-last-player-to-move game)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; searching
 
 ;; TODO: quiescience
-(define (chess-default-heuristic bd)
+
+;; material values only
+(define (chess-material-heuristic bd)
   (let lp ((bd bd) (i 0) (lim 8) (res 0))
     (cond
      ((= i lim)
@@ -753,6 +799,21 @@
      (else
       (lp bd (+ i 1) lim
           (+ res (white-piece-value (bytevector-u8-ref bd i))))))))
+
+;; encourage development
+(define (chess-default-heuristic bd)
+  (let lp ((bd bd) (i 0) (lim 8) (res 0))
+    (cond
+     ((= i lim)
+      (if (= lim 120) res (lp bd (+ i 8) (+ lim 16) res)))
+     (else
+      (let ((piece (bytevector-u8-ref bd i)))
+        (if (eq? piece piece-none)
+            (lp bd (+ i 1) lim res)
+            (lp bd (+ i 1) lim
+                (+ res
+                   (white-piece-value piece)
+                   (white-piece-mobility bd i piece)))))))))
 
 ;; Of all my possible moves, choose the best response my opponent can
 ;; give, and keep track of which move is best for me.  Return just the
@@ -818,16 +879,20 @@
           (chess-move! bd2
                        (move-source (vector-ref move-set i))
                        (move-destination (vector-ref move-set i)))
-          (let ((riposte (minimax bd2
-                                   (player-complement player)
-                                   (- depth 1)
-                                   -20000
-                                   +20000
-                                   move-sets
-                                   boards)))
-            (if (and riposte (or (not best) (better? riposte best)))
-                (loop (+ i 1) riposte (vector-ref move-set i))
-                (loop (+ i 1) best best-move)))))))))
+          (if (board-check? bd2 player)
+              ;; skip - can't move into check
+              (loop (+ i 1) best best-move)
+              (let ((riposte (minimax bd2
+                                      (player-complement player)
+                                      (- depth 1)
+                                      -20000
+                                      +20000
+                                      move-sets
+                                      boards)))
+                ;;(write `(,(vector-ref move-set i) => ,riposte) (current-error-port)) (newline (current-error-port))
+                (if (and riposte (or (not best) (better? riposte best)))
+                    (loop (+ i 1) riposte (vector-ref move-set i))
+                    (loop (+ i 1) best best-move))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -904,7 +969,7 @@
               (turn game (+ i 1) order)
               (let ((new ((car o) game i)))
                 (redisplay new)
-                (write `(heuristic: ,(chess-default-heuristic (chess-game-board game)))) (newline)
+                ;;(write `(heuristic: ,(chess-default-heuristic (chess-game-board game)))) (newline)
                 (cond
                  ((chess-mate? new)
                   (write-string "Checkmate!  ")
