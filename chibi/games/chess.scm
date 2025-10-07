@@ -290,12 +290,29 @@
     (and (pair? v) (car v))))
 
 (define (chess-game-last-player-to-move game)
-  (piece-player
-   (bytevector-u8-ref (chess-game-board game)
-                      (move-destination (chess-game-prev game)))))
+  (cond
+   ((chess-game-prev game)
+    => (lambda (prev-move)
+         (piece-player
+          (bytevector-u8-ref (chess-game-board game)
+                             (move-destination prev-move)))))
+   (else player-black)))
 
 (define (chess-game-player-to-move game)
   (player-complement (chess-game-last-player-to-move game)))
+
+(define (chess-game-from-moves moves)
+  (let lp ((moves moves)
+           (game (make-chess-game))
+           (player player-white))
+    (if (null? moves)
+        game
+        (let ((move (chess-parse-move game (car moves) player)))
+          (if move
+              (lp (cdr moves)
+                  (chess-game-apply-move game move)
+                  (player-complement player))
+              (error "not a valid move" (car moves)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; describing movement & notation
@@ -327,11 +344,12 @@
 
 (define (chess-parse-source x bd dest player)
   (cond
-    ((chess-parse-destination x player) => values)
+    ((chess-parse-destination x player))
     ((string? x)
       (let ((len (string-length x)))
         (case len
           ((1)
+           ;; TODO: allow file for pawn moves
            (let ((ls (chess-reverse-moves-by-piece
                       bd dest player (x->piece x player))))
              (and (= 1 (length ls)) (car ls))))
@@ -348,6 +366,14 @@
           ((3) (chess-parse-destination (substring x 1 3) player))
           (else #f))))
     (else #f)))
+
+(define (string-maybe-split-nonempty str delims)
+  (let ((sc (string-index str (lambda (ch) (memv ch delims))))
+        (end (string-cursor-end str)))
+    (and (string-cursor>? sc (string-cursor-start str))
+         (string-cursor<? sc (string-cursor-prev str end))
+         (cons (substring/cursors str (string-cursor-start str) sc)
+               (substring/cursors str (string-cursor-next str sc) end)))))
 
 (define (chess-parse-move game move player)
   (cond
@@ -368,25 +394,23 @@
         (if (equal? player player-white)
             (chess-parse-move game "e1-c1" player)
             (chess-parse-move game "e8-c8" player)))
-       ((string-cursor<? (string-index str (lambda (ch) (memv ch '(#\x #\-))))
-                         (string-cursor-end str))
-        (let ((i (string-cursor->index
-                  str
-                  (string-index str (lambda (ch) (memv ch '(#\x #\-)))))))
-          (and (<= 1 i (- len 1))
-               (chess-parse-move
-                game
-                (cons (substring str 0 i) (substring str (+ i 1) len))
-                player))))
+       ((string-maybe-split-nonempty str '(#\x #\-))
+        => (lambda (split)
+             (chess-parse-move game split player)))
        ((and (= len 2)
              (memv (string-ref str 0) '(#\a #\b #\c #\d #\e #\f #\g #\h))
              (char-numeric? (string-ref str 1)))
         (chess-parse-move game (cons "P" str) player))
+       ;; ((and (= len 2)
+       ;;       (memv (string-ref str 0) '(#\a #\b #\c #\d #\e #\f #\g #\h))
+       ;;       (memv (string-ref str 1) '(#\a #\b #\c #\d #\e #\f #\g #\h)))
+       ;;  ;; TODO: find the available pawn capture, including en passant
+       ;;  (chess-parse-move game (cons "P" str) player))
        ((= len 3)
         (chess-parse-move game
                           (cons (substring str 0 1) (substring str 1 3))
                           player))
-       ((= (string-length str) 4)
+       ((= len 4)
         (chess-parse-move game
                           (cons (substring str 0 2) (substring str 2 4))
                           player))
@@ -583,6 +607,7 @@
           (lambda (i p) (when (= p my-king) (push! res i))))
         (for-each-diagonal-1 bd index
           (lambda (i p) (when (= p my-king) (push! res i))))
+        ;; TODO: castling
         ;; orthogonal (rook, queen)
         (for-each-orthogonal* bd opponent index
           (lambda (i p)
@@ -705,8 +730,8 @@
                (zero? (bytevector-u8-ref bd 5))
                (= piece-rook (bytevector-u8-ref bd 7))
                (not (board-castle-disabled? bd player-white kingside))
-               (null? (chess-reverse-moves bd 4 player-white))
-               (null? (chess-reverse-moves bd 5 player-white)))
+               (null? (chess-reverse-moves bd 4 player-black))
+               (null? (chess-reverse-moves bd 5 player-black)))
       (vector-set! move-set i (make-move 4 6))
       (set! i (+ i 1)))
     (when (and (zero? (bytevector-u8-ref bd 1))
@@ -714,8 +739,8 @@
                (zero? (bytevector-u8-ref bd 3))
                (= piece-rook (bytevector-u8-ref bd 0))
                (not (board-castle-disabled? bd player-white queenside))
-               (null? (chess-reverse-moves bd 4 player-white))
-               (null? (chess-reverse-moves bd 3 player-white)))
+               (null? (chess-reverse-moves bd 4 player-black))
+               (null? (chess-reverse-moves bd 3 player-black)))
       (vector-set! move-set i (make-move 4 2))
       (set! i (+ i 1))))
    ((and (= index 116) (= black-king (bytevector-u8-ref bd 116)))
@@ -723,8 +748,8 @@
                (zero? (bytevector-u8-ref bd 117))
                (= black-rook (bytevector-u8-ref bd 119))
                (not (board-castle-disabled? bd player-black kingside))
-               (null? (chess-reverse-moves bd 116 player-black))
-               (null? (chess-reverse-moves bd 117 player-black)))
+               (null? (chess-reverse-moves bd 116 player-white))
+               (null? (chess-reverse-moves bd 117 player-white)))
       (vector-set! move-set i (make-move 116 118))
       (set! i (+ i 1)))
     (when (and (zero? (bytevector-u8-ref bd 113))
@@ -732,8 +757,8 @@
                (zero? (bytevector-u8-ref bd 115))
                (= black-rook (bytevector-u8-ref bd 112))
                (not (board-castle-disabled? bd player-black queenside))
-               (null? (chess-reverse-moves bd 116 player-black))
-               (null? (chess-reverse-moves bd 115 player-black)))
+               (null? (chess-reverse-moves bd 116 player-white))
+               (null? (chess-reverse-moves bd 115 player-white)))
       (vector-set! move-set i (make-move 116 114))
       (set! i (+ i 1)))))
   i)
@@ -781,9 +806,7 @@
              (defending-player (chess-game-player-to-move game)))
          (every (lambda (game) (chess-check? game defending-player))
                 (map (lambda (move) (chess-game-apply-move game move))
-                     (chess-board-moves->list
-                      bd
-                      (chess-game-last-player-to-move game)))))))
+                     (chess-board-moves->list bd defending-player))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; searching
@@ -922,22 +945,20 @@
           (let ((resp (read-line)))
             (when (or (eof-object? resp) (member resp '("exit" "quit")))
               (exit 0))
-            (let ((move (chess-parse-move game resp player)))
+            (let ((move (chess-parse-move game resp player))
+                  (legal-moves
+                   (chess-board-moves->list
+                    (chess-game-board game) player move-set)))
               (cond
-               ((member move
-                        (chess-board-moves->list
-                         (chess-game-board game) player move-set))
+               ((member move legal-moves)
                 (chess-game-apply-move game move))
                (else
-                (write-string (if move  ;(chess-notation-valid? resp)
-                                  *illegal-move*
-                                  *invalid-move-syntax*))
+                (write-string (if move *illegal-move* *invalid-move-syntax*))
                 (write-string resp)
                 (newline)
                 (write (map (lambda (move)
                               (chess-format-move (chess-game-board game) move))
-                            (chess-board-moves->list
-                             (chess-game-board game) player move-set)))
+                            legal-moves))
                 (newline)
                 (loop)))))))
       (define (computer-move game i)
