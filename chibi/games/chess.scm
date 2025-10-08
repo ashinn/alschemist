@@ -146,6 +146,11 @@
 (define (index->file index)
   (bitwise-and index #b1111))
 
+(define (index->string index)
+  (string-append
+   (string (integer->char (+ (char->integer #\a) (index->file index))))
+   (number->string (+ 1 (index->rank index)))))
+
 (define (valid-index? index)
   (zero? (bitwise-and index #x88)))
 
@@ -383,7 +388,10 @@
                  (car move) (chess-game-board game) dest player)))
       (and src dest (make-move src dest))))
    ((string? move)
-    (let* ((str move)
+    (let* ((str (string-trim-both move
+                                  (lambda (ch)
+                                    (or (char-whitespace? ch)
+                                        (memv ch '(#\+ #\! #\? #\#))))))
            (len (string-length str)))
       (cond
        ((or (string=? str "O-O") (string=? str "o-o"))
@@ -401,11 +409,30 @@
              (memv (string-ref str 0) '(#\a #\b #\c #\d #\e #\f #\g #\h))
              (char-numeric? (string-ref str 1)))
         (chess-parse-move game (cons "P" str) player))
-       ;; ((and (= len 2)
-       ;;       (memv (string-ref str 0) '(#\a #\b #\c #\d #\e #\f #\g #\h))
-       ;;       (memv (string-ref str 1) '(#\a #\b #\c #\d #\e #\f #\g #\h)))
-       ;;  ;; TODO: find the available pawn capture, including en passant
-       ;;  (chess-parse-move game (cons "P" str) player))
+       ((and (= len 2)
+             (memv (string-ref str 0) '(#\a #\b #\c #\d #\e #\f #\g #\h))
+             (memv (string-ref str 1) '(#\a #\b #\c #\d #\e #\f #\g #\h))
+             (= 1 (abs (- (char->integer (string-ref str 0))
+                          (char->integer (string-ref str 1))))))
+        (let* ((bd (chess-game-board game))
+               (from-file (chess-parse-file (string-ref str 0)))
+               (to-file (chess-parse-file (string-ref str 1)))
+               (start-index (rank+file->index 1 from-file))
+               (offset (if (eq? player player-white)
+                           (if (< from-file to-file) +17 +15)
+                           (if (< from-file to-file) -15 -17)))
+               (res #f))
+          ;; slide from 2nd rank
+          (for-each-slide
+           bd start-index +16
+           (lambda (from-index piece)
+             (let ((to-index (+ from-index offset)))
+               (if (and (valid-index? to-index)
+                        (= piece (player-piece player piece-pawn))
+                        (= (bytevector-u8-ref bd to-index)
+                           (player-piece (player-complement player) piece-pawn)))
+                   (set! res (make-move from-index to-index))))))
+          res))
        ((= len 3)
         (chess-parse-move game
                           (cons (substring str 0 1) (substring str 1 3))
@@ -607,7 +634,7 @@
           (lambda (i p) (when (= p my-king) (push! res i))))
         (for-each-diagonal-1 bd index
           (lambda (i p) (when (= p my-king) (push! res i))))
-        ;; TODO: castling
+        ;; TODO: castling (edge case of castling as an attack)
         ;; orthogonal (rook, queen)
         (for-each-orthogonal* bd opponent index
           (lambda (i p)
@@ -912,7 +939,6 @@
                                       +20000
                                       move-sets
                                       boards)))
-                ;;(write `(,(vector-ref move-set i) => ,riposte) (current-error-port)) (newline (current-error-port))
                 (if (and riposte (or (not best) (better? riposte best)))
                     (loop (+ i 1) riposte (vector-ref move-set i))
                     (loop (+ i 1) best best-move))))))))))
