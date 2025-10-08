@@ -910,6 +910,7 @@
 
 (define (chess-choose-move game player . o)
   (let ((depth (if (pair? o) (car o) 3))
+        (temperature (if (and (pair? o) (pair? (cdr o))) (cadr o) 0.))
         (better? (if (player-white? player) > <)))
     (when (< (length (chess-game-move-sets game)) depth)
       (chess-game-move-sets-set! game (map (lambda _ (make-move-set)) (iota depth)))
@@ -932,14 +933,17 @@
           (if (board-check? bd2 player)
               ;; skip - can't move into check
               (loop (+ i 1) best best-move)
-              (let ((riposte (minimax bd2
-                                      (player-complement player)
-                                      (- depth 1)
-                                      -20000
-                                      +20000
-                                      move-sets
-                                      boards)))
-                (if (and riposte (or (not best) (better? riposte best)))
+              (let ((riposte (+ (minimax bd2
+                                         (player-complement player)
+                                         (- depth 1)
+                                         -20000
+                                         +20000
+                                         move-sets
+                                         boards)
+                                (* (random-real) temperature .25
+                                   (white-piece-value piece-pawn)))))
+                (if (and riposte
+                         (or (not best) (better? riposte best)))
                     (loop (+ i 1) riposte (vector-ref move-set i))
                     (loop (+ i 1) best best-move))))))))))
 
@@ -951,12 +955,14 @@
 (define *illegal-move*
   "  Illegal move: ")
 
-(define (main . args)
-  (let ((unicode? #f)  ; "unicode|u"
-        (reverse-video? #f)  ; "reverse-video|rv"
-        (ansi? #f)  ; "ansi|a"
-        (black? #f)  ; "black|b"
-        (no-display? #f))  ; "n|no-display"
+(define (run-main cfg spec)
+  (let ((unicode? (conf-get cfg 'unicode? #f))
+        (reverse-video? (conf-get cfg 'reverse-video? #f))
+        (ansi? (conf-get cfg 'ansi? #f))
+        (black? (conf-get cfg 'black? #f))
+        (no-display? (conf-get cfg 'no-display? #f))
+        (depth (conf-get cfg 'depth 3))
+        (temperature (conf-get cfg 'temperature .7)))
     (let* ((player (if black? player-black player-white))
            (computer (player-complement player))
            (move-set (make-move-set)))
@@ -988,7 +994,7 @@
                 (newline)
                 (loop)))))))
       (define (computer-move game i)
-        (let ((new (chess-choose-move game computer)))
+        (let ((new (chess-choose-move game computer depth temperature)))
           (cond
            (new
             (prompt-move computer i)
@@ -1003,9 +1009,9 @@
         (unless no-display?
           (print-chess-board
            (chess-game-board game)
-           ':center-col " " ':top "\n" ':bottom "\n" ':left "  "
-           ':unicode? unicode? ':ansi? ansi? ':black? black?
-           ':reverse-video? reverse-video?)))
+           'center-col: " " 'top: "\n" 'bottom: "\n" 'left: "  "
+           'unicode?: unicode? 'ansi?: ansi? 'black?: black?
+           'reverse-video?: reverse-video?)))
       (let ((order (if (player-white? player)
                        (list player-move computer-move)
                        (list computer-move player-move)))
@@ -1025,6 +1031,21 @@
                   (exit 0))
                  (else
                   (turn new i (cdr o)))))))))))
+
+(define (main . args)
+  (run-application
+   `(chess
+     "play a game of chess"
+     (@
+      (unicode? boolean (#\u) "use unicode output")
+      (reverse-video? boolean (#\r) "use reverse video output")
+      (ansi? boolean (#\a) "use ansi output")
+      (black? boolean (#\b) "play as black")
+      (no-display? boolean (#\n) "don't print the board on each move")
+      (depth integer (#\d) "specify the search depth")
+      (temperature real (#\t) "specify the temperature (randomness)"))
+     (,run-main))
+   (command-line)))
 
 ;; Local Variables:
 ;; eval: (put 'for-each-orthogonal-1 'scheme-indent-function 2)
