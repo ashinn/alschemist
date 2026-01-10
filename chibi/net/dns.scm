@@ -263,8 +263,9 @@
         (let ((line (read-line in)))
           (if (eof-object? line)
               (reverse res)
-              (let ((ls (string-split line)))
-                (if (string=? (car ls) "nameserver")
+              (let ((ls (string-split line " ")))
+                (if (and (pair? ls)
+                         (string=? (car ls) "nameserver"))
                     (lp (cons (cadr ls) res))
                     (lp res)))))))))
 
