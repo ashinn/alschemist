@@ -15,6 +15,7 @@
    stock-price-set! stock-dividend-yield-set! stock-cagr-set!
    stock-shares-for-amount
    make-asset asset? asset-name asset-value asset-type asset-unit
+   asset-acquire-price asset-acquire-price-set! asset-gain asset-currency
    asset-interest asset-value-in asset-stock? asset-copy
    asset-inc! asset-mul! asset-mul/lb! asset-value-set!
    make-portfolio portfolio? portfolio-copy
@@ -23,5 +24,6 @@
    portfolio-values-by-type portfolio-value-by-type
    portfolio-flat-assets portfolio-add-asset! portfolio-remove-asset!
    portfolio-inc! portfolio-sell! portfolio-buy! portfolio-liquidate!
+   portfolio-value-after-crash
    finance-offline-data? fx)
   (include "asset.scm"))

@@ -47,7 +47,7 @@
   (opt-lambda (symbol
                default-price
                (currency 'USD)
-               (dividend-yield 0.0)
+               (dividend-yield #f)
                (cagr 0.0)
                (volatility 1.0))
     (let ((info (and (not (finance-offline-data?))
@@ -58,9 +58,10 @@
                          (and info (get-stock-price info)))
                        default-price)
                    currency
-                   (or (guard (exn (else #f))
+                   (or dividend-yield
+                       (guard (exn (else #f))
                          (and info (get-stock-dividend-yield info)))
-                       dividend-yield)
+                       0.0)
                    cagr
                    volatility))))
 
@@ -68,13 +69,16 @@
   (symbol->string (if (stock? unit) (stock-symbol unit) unit)))
 
 (define-record-type Asset
-  (%make-asset name value unit interest type)
+  (%make-asset name value unit acquire-price interest type)
   asset?
   (name asset-name)
   ;; The numeric value in currency or number of shares.
   (value asset-value asset-value-set!)
   ;; A currency symbol or Stock object.
   (unit asset-unit)
+  ;; For stock units, the average price (in the same currency) at the
+  ;; time the stock was acquired, used to compute capital gains.
+  (acquire-price asset-acquire-price asset-acquire-price-set!)
   ;; Non-zero if the asset accrues interest.
   (interest asset-interest)
   ;; A handy designator when summarizing assets, e.g. 'liquid or
@@ -87,18 +91,21 @@
                 (value 0)
                 (unit 'JPY)
                 (interest 0)
-                (type (if (stock? unit) 'stock 'liquid)))
+                (type (if (stock? unit) 'stock 'liquid))
+                (acquire-price (and (stock? unit)
+                                    (stock-price unit))))
     (assert (string? name))
     (assert (number? value))
     (assert (or (symbol? unit) (stock? unit)))
     (assert (number? interest))
     (assert (symbol? type))
-    (%make-asset name value unit interest type)))
+    (%make-asset name value unit acquire-price interest type)))
 
 (define (asset-copy asset)
   (%make-asset (asset-name asset)
                (asset-value asset)
                (asset-unit asset)
+               (asset-acquire-price asset)
                (asset-interest asset)
                (asset-type asset)))
 
@@ -115,10 +122,16 @@
              (+ x (asset-value asset)) " " o)
   (let ((cur-val (asset-value asset)))
     (asset-value-set! asset (+ x cur-val))
-    (if (and (positive? cur-val)
-             (negative? (asset-value asset)))
-        (log-warn "asset " (asset-name asset) " became negative: "
-                  cur-val " => " (asset-value asset) o))))
+    (when (and (asset-acquire-price asset) (asset-stock? asset))
+      ;; when adding in new shares of a stock, update the avg price
+      (let ((avg-price (/ (+ (* cur-val (asset-acquire-price asset))
+                             (* x (stock-price (asset-unit asset))))
+                          (+ x cur-val))))
+        (asset-acquire-price-set! asset avg-price)))
+    (when (and (positive? cur-val)
+               (negative? (asset-value asset)))
+      (log-warn "asset " (asset-name asset) " became negative: "
+                cur-val " => " (asset-value asset) o))))
 
 (define (asset-mul! asset x . o)
   (log-trace `(asset-mul! ,(asset-name asset) ,x) " => "
@@ -142,6 +155,17 @@
            (fx (asset-unit asset)
                currency
                default-rate)))))
+
+(define (asset-gain asset)
+  (cond
+   ((not (asset-acquire-price asset))
+    (asset-value asset))
+   ((asset-stock? asset)
+    (- (* (asset-value asset) (stock-price (asset-unit asset)))
+       (* (asset-value asset) (asset-acquire-price asset))))
+   (else
+    (- (asset-value-in asset (asset-currency asset))
+       (asset-acquire-price asset)))))
 
 (define-record-type Portfolio
   (make-portfolio name assets)
@@ -388,3 +412,39 @@
           0
           (filter (lambda (a) (eq? type (asset-type a)))
                   (portfolio-flat-assets pf)))))
+
+;; Assume a market crash of some percent (default 25), what is the
+;; resulting liquid value of the portfolio, subtracting out capital
+;; gains.  You can specify a filter to exclude assets, such as
+;; ignoring real-estate if you don't want to sell your house, while
+;; still subtracting out any mortgage in full.
+(define portfolio-value-after-crash
+  (opt-lambda (pf (stock-drop-percent 0.25)
+                  (currency (current-currency))
+                  (ignore? (lambda (asset) #f))
+                  (capital-gains-rate 0.0))
+    (let lp ((ls (portfolio-flat-assets pf))
+             (sum 0)
+             (gains 0))
+      (if (null? ls)
+          (+ sum (* capital-gains-rate (max 0 gains)))
+          (let ((asset (car ls)))
+            (cond
+             ((ignore? asset)
+              (lp (cdr ls) sum gains))
+             ((eq? (asset-type asset) 'stock)
+              (lp (cdr ls)
+                  (+ sum (* (- 1 stock-drop-percent)
+                            (asset-value-in asset currency)))
+                  (+ gains
+                     (if (asset-acquire-price asset)
+                         (- (* (asset-value asset)
+                               (stock-price (asset-unit asset))
+                               (- 1 stock-drop-percent))
+                            (* (asset-value asset) (asset-acquire-price asset))
+                            (fx (asset-currency asset) currency))
+                         0))))
+             (else
+              (lp (cdr ls)
+                  (+ sum (asset-value-in asset currency))
+                  gains))))))))
