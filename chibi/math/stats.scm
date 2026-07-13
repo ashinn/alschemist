@@ -13,6 +13,8 @@
 ;;> basic utilities for both of these covering many common use cases,
 ;;> while serving as a basis for more advanced uses.
 
+;; https://www.evanmiller.org/statistical-shortcomings-in-standard-math-libraries.html
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Sequence utilities - all procedures handle lists, vectors and arrays
 
@@ -421,13 +423,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;> \subsection{Standard Distributions}
 
-(define (normal-pdf x mu sigma)
+(define (normal-pdf x mu variance)
   (/ (exp (- (/ (square (- x mu))
-                (* 2 (square sigma)))))
-     (sqrt (* 2 (acos -1) (square sigma)))))
+                (* 2 variance))))
+     (sqrt (* 2 (acos -1) variance))))
 
-(define (normal-cdf x mu sigma)
-  (/ (+ 1 (flerf (/ (- x mu) (* (sqrt 2) sigma))))
+(define (normal-cdf x mu variance)
+  (/ (+ 1 (flerf (/ (- x mu) (* (sqrt 2) (sqrt variance)))))
      2))
 
 ;; determine z-score critical value
@@ -469,11 +471,10 @@
      (lambda (x)
        (normal-pdf x mean variance))
      (lambda (x)
-       (/ (+ 1 (flerf (/ (- x mean) (* (sqrt 2) variance))))
-          2))
+       (normal-cdf x mean variance))
      (make-statistics #f mean mean mean variance 0 3 -inf.0 +inf.0)
      (lambda ()
-       (+ mean (* variance
+       (+ mean (* (sqrt variance)
                   (sqrt (* -2.0 (log (random-real))))
                   (cos (* 2.0 (acos -1) (random-real)))))))))
 
