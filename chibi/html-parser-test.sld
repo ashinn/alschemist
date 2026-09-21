@@ -74,7 +74,16 @@
             (html->sxml "<br>\r\n<br>\r\n<div data=\"(sxml (@ (attr &quot;12345&quot;)) body)\">div body</div>"))
 
         (test '(*TOP* (p "foo'bar\"baz"))
-            (html->sxml "<p>foo&apos;bar&quot;baz</p>")) 
+            (html->sxml "<p>foo&apos;bar&quot;baz</p>"))
+
+        (test '(*TOP* (p "a") (p "b"))
+            (html->sxml "<p>a<p>b"))
+
+        (test '(*TOP* (div "a" (p "b")))
+            (html->sxml "<div>a<p>b"))
+
+        (test '(*TOP* (li "a") (li) (li (div (p "b"))) (li "c") (li))
+            (html->sxml "<li>a<li><li><div><p>b</div></li><li>c<li>"))
         )
 
       (test-end))))

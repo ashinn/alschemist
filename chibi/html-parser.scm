@@ -295,6 +295,11 @@
 (define *tag-levels*
   '(html (head body) table (thead tbody) tr (th td) p (b i u s)))
 
+(define *block*
+  '(div main section article header footer aside h1 h2 h3 h4 h5 h6 p
+        blockquote pre hr address ul ol li dl dt dd table tfoot form
+        fieldset figure figcaption video canvas noscript))
+
 (define *unnestables*
   '(p li td tr th dt dd rt rp optgroup option))
 
@@ -555,6 +560,7 @@
               ((not (cdr tok)) ;; nameless closing tag
                (lp (read-html-token in entities) seed seeds tags))
               ((and (pair? tags) (eq? (cdr tok) (caar tags)))
+               ;; closing the currently open tag
                (lp (read-html-token in entities)
                    (end (cdr tok) (fix-attrs (cadar tags) seed)
                         (car seeds) seed #f)
@@ -567,8 +573,12 @@
                           (tag-level tag-levels (caar tags))
                           -1)))
                  (cond
-                  ((< this-level expected-level)
-                   ;; higher-level tag, forcefully close preceding tags
+                  ((or (< this-level expected-level)
+                       (and (memq (cdr tok) *block*)
+                            (pair? tags)
+                            (memq (caar tags) *block*)))
+                   ;; higher-level tag or both block tags,
+                   ;; forcefully close preceding tags
                    (lp tok
                        (end (caar tags) (fix-attrs (cadar tags) seed)
                             (car seeds) seed 'parent-closed)
