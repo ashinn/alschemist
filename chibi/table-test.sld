@@ -59,9 +59,7 @@
         (test-error (table-column-set! passengers 'Age '(0 1 2)))
         (table-column-set! passengers 'Age '(0 1 2 3 4))
         (test 3 (table-ref passengers 3 'Age))
-        (let ((round-fares
-               (array-map round (array-squeeze (table-column passengers 'Fare)))))
-          (table-column-adjoin! passengers 'RoundFare round-fares))
+        (table-column-map-to! passengers 'Fare round 'RoundFare)
         (test 7. (table-ref passengers 0 'RoundFare))
         (test 53. (table-ref passengers 3 'RoundFare))
         (table-column-drop! passengers 'Age)

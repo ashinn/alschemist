@@ -203,6 +203,16 @@
 (define (table-column-adjoin table . o)
   (apply table-column-adjoin! (table-copy table) o))
 
+(define table-column-map-to!
+  (opt-lambda (table from-column proc to-column (storage generic-storage-class))
+    (let ((mapped
+           (array-map proc (array-squeeze (table-column table from-column)))))
+      (table-column-adjoin! table to-column mapped))))
+
+(define table-column-map-to
+  (opt-lambda (table from-column proc to-column (storage generic-storage-class))
+    (table-column-map-to! (table-copy table) from-column proc to-column storage)))
+
 (define (vector-take vec k)
   (vector-copy vec 0 (+ k 1)))
 

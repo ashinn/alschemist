@@ -16,6 +16,7 @@
           table->array table-column table-column-storage
           table-column-define! table-column-set!
           table-column-adjoin! table-column-adjoin
+          table-column-map-to! table-column-map-to
           table-column-drop! table-column-drop
           table-consolidate! table-consolidate
           table-load-csv
