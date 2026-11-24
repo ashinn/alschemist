@@ -3,7 +3,7 @@
   (stack-blocks
    (list
     (dense-block 4 8)
-    (dense-block 8 3))))
+    (dense-block/linear 8 3))))
 
 (define iris-classifier (block-fn iris-network))
 

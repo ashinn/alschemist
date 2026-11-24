@@ -194,6 +194,15 @@
                (list m))
          'relu))
 
+;; A dense block without the rectifier, e.g. for an output layer,
+;; where a rectified unit that goes negative for every input gets no
+;; gradient and can never recover.
+(define (dense-block/linear n m)
+  (block linear
+         (list (list m n)
+               (list m))
+         'linear))
+
 (define (init-weights shapes . o)
   (let ((storage (if (pair? o) (car o) generic-storage-class))
         (random-source (if (and (pair? o) (pair? (cdr o)))

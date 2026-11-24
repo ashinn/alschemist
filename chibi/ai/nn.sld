@@ -10,7 +10,7 @@
           (chibi math debug))
   (export linear relu block block? block-fn block-ls block-name grid-search
           accuracy class= array-index-of-max init-weights
-          block-compose stack-blocks dense-block model linear relu
+          block-compose stack-blocks dense-block dense-block/linear model linear relu
           gradient-descent rms-gradient-descent adam-gradient-descent
           naked-gradient-descent velocity-gradient-descent
           l2-loss sampling-loss smooth
