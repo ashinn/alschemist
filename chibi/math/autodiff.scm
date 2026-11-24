@@ -70,16 +70,69 @@
 
 ;;> \section{Gradients}
 
+;; The gradients are accumulated in a table, plus a queue of the duals
+;; whose links still need to run.  The queue is a max-heap on
+;; dual-serial: a dual is created after all of its inputs, so popping
+;; in decreasing serial order runs each link only after every consumer
+;; of that dual has contributed to its gradient.
+(define-record-type Gradients
+  (%make-gradients table heap size)
+  gradients?
+  (table gradients-table)
+  (heap gradients-heap gradients-heap-set!)
+  (size gradients-size gradients-size-set!))
+
 (define (make-gradients)
-  (make-hash-table eq?))
+  (%make-gradients (make-hash-table eq?) (make-vector 64 #f) 0))
 (define (gradients-done? grads d)
   (assert (dual? d))
-  (hash-table-ref/default grads d #f))
+  (hash-table-ref/default (gradients-table grads) d #f))
 (define (gradients-ref grads d)
   (assert (dual? d))
-  (hash-table-ref/default grads d 0.0))
+  (hash-table-ref/default (gradients-table grads) d 0.0))
 (define (gradients-set! grads d v)
-  (hash-table-set! grads d v))
+  (hash-table-set! (gradients-table grads) d v))
+
+(define (gradients-push! grads d)
+  (let ((n (gradients-size grads)))
+    (when (= n (vector-length (gradients-heap grads)))
+      (let ((new-heap (make-vector (* 2 n) #f)))
+        (vector-copy! new-heap 0 (gradients-heap grads))
+        (gradients-heap-set! grads new-heap)))
+    (let ((heap (gradients-heap grads)))
+      (let lp ((i n))
+        (let ((parent (quotient (- i 1) 2)))
+          (if (and (> i 0)
+                   (< (dual-serial (vector-ref heap parent)) (dual-serial d)))
+              (begin
+                (vector-set! heap i (vector-ref heap parent))
+                (lp parent))
+              (vector-set! heap i d))))
+      (gradients-size-set! grads (+ n 1)))))
+
+(define (gradients-pop! grads)
+  (let* ((heap (gradients-heap grads))
+         (n (- (gradients-size grads) 1))
+         (top (vector-ref heap 0))
+         (last (vector-ref heap n)))
+    (vector-set! heap n #f)
+    (gradients-size-set! grads n)
+    (when (> n 0)
+      (let lp ((i 0))
+        (let* ((l (+ (* 2 i) 1))
+               (r (+ l 1))
+               (c (if (and (< r n)
+                           (> (dual-serial (vector-ref heap r))
+                              (dual-serial (vector-ref heap l))))
+                      r
+                      l)))
+          (if (and (< l n)
+                   (> (dual-serial (vector-ref heap c)) (dual-serial last)))
+              (begin
+                (vector-set! heap i (vector-ref heap c))
+                (lp c))
+              (vector-set! heap i last)))))
+    top))
 
 (define (shape-of x)
   (cond ((dual? x) (shape-of (dual-value x)))
@@ -89,7 +142,7 @@
 (define (gradients-inc! grads d v)
   (assert (dual? d))
   (unless (dual-const? d)
-    (let* ((current-grad (hash-table-ref/default grads d #f))
+    (let* ((current-grad (gradients-done? grads d))
            (v (if (promise? v) (force v) v))
            (v (if (array? (dual-value d))
                   (array-un/broadcast v (array-domain (dual-value d)))
@@ -100,12 +153,17 @@
         (gradients-set! grads d (array+ current-grad v)))
        (else
         (gradients-set! grads d v)
-        ((dual-link d) d grads))))))
+        (gradients-push! grads d))))))
 
 (define (gradient loss wrt)
   (let ((grads (make-gradients)))
     (gradients-set! grads loss 1.0)
-    ((dual-link loss) loss grads)
+    (gradients-push! grads loss)
+    (let lp ()
+      (when (positive? (gradients-size grads))
+        (let ((d (gradients-pop! grads)))
+          ((dual-link d) d grads)
+          (lp))))
     (if (dual? wrt)
         (gradients-ref grads wrt)
         (map (lambda (d) (gradients-ref grads d)) wrt))))
@@ -161,7 +219,7 @@
   (lambda (self grads)
     (let* ((grad (gradients-ref grads self))
            (delta (array* (e^ (dual-value a)) grad)))
-      (gradients-inc! grads a (exp grad)))))
+      (gradients-inc! grads a delta))))
 
 (define-dual-op (dual-log a) array-log ln
   (lambda (self grads)

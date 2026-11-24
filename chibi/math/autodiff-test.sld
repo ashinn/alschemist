@@ -3,6 +3,7 @@
   (import (scheme base)
           (scheme list)
           (scheme write)
+          (scheme inexact)
           (srfi 231)
           (chibi math autodiff)
           (chibi math linalg)
@@ -156,6 +157,21 @@
           (first grads))
         (test-array (tensor '((-0.166667) (-0.071429)))
           (second grads)))
+      ;; A dual used by more than one consumer must collect all of
+      ;; their gradients before passing its own back.
+      (let*-duals ((x 2.0)
+                   (h (.* x 3.0))
+                   (L (.* h h)))
+        (test '(36.0 12.0) (gradient L (list x h))))
+      (let*-duals ((x 2.0)
+                   (h (.* x 3.0))
+                   (k (.+ h 1.0))
+                   (L (.+ (.* h k) h)))
+        ;; L = 9x^2 + 6x, dL/dx = 18x + 6
+        (test '(42.0) (gradient L (list x))))
+      (let*-duals ((x 1.0)
+                   (L (.* 2.0 (.exp x))))
+        (test (* 2.0 (exp 1.0)) (car (gradient L (list x)))))
       (test-end))))
 
 ;; Local Variables:

@@ -98,7 +98,7 @@
   (let ((v (.- (.* (velocity-retained) (dual-value (cadr w)))
                (.* (learning-rate) (dual-value g)))))
     (list (dual-with-label (as-dual (.+ (dual-value (car w)) v))
-                           (dual-label (cadr w)))
+                           (dual-label (car w)))
           (dual-value v))))
 
 (define velocity-gradient-descent
@@ -139,7 +139,7 @@
                     (array+ (array-sqrt r) (gradient-stabilizer))))
          (v (smooth (velocity-retained) (cadr w) g)))
     (list (dual-with-label (as-dual (array- (dual-value (car w))
-                                            (array* a (dual-value g))))
+                                            (array* a v)))
                            (dual-label (car w)))
           v
           r)))

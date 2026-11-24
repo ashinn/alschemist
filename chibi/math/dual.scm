@@ -2,12 +2,22 @@
 ;;> \section{Duals}
 
 (define-record-type Dual
-  (make-dual value link label const?)
+  (%make-dual value link label const? serial)
   dual?
   (value %dual-value)
   (link dual-link)
   (label %dual-label)
-  (const? dual-const?))
+  (const? dual-const?)
+  (serial dual-serial))
+
+;; Every dual is numbered in creation order.  A dual can only be built
+;; from duals that already exist, so this is a topological order of
+;; the computation graph, which backpropagation needs (see gradient).
+(define dual-counter 0)
+
+(define (make-dual value link label const?)
+  (set! dual-counter (+ dual-counter 1))
+  (%make-dual value link label const? dual-counter))
 
 (define (dual value . o)
   (let ((link (if (pair? o) (car o) values))
