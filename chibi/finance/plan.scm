@@ -195,6 +195,7 @@
                                (stock-cagr (asset-unit asset))
                                (asset-interest asset)))))
         (when (positive? rate)
+          (log-debug "interest: " (asset-name asset) ": " (asset-value asset) " + " (* 100 (/ rate period)) "% => " (* (asset-value asset) (+ 1 (/ rate period))))
           (asset-mul! asset (+ 1 (/ rate period))))))))
 
 (define depreciation
@@ -218,6 +219,7 @@
           (when (and yield (positive? yield))
             (let ((amount (* (/ yield period)
                              (asset-value-in asset currency))))
+              (log-debug "dividends: " (asset-name asset) " @" (* 100. yield) "% => " amount)
               (portfolio-inc! portfolio amount currency)))))))))
 
 (define passive-gains

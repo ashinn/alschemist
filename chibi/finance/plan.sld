@@ -9,7 +9,8 @@
           (chibi chrono)
           (chibi chrono schedule)
           (chibi finance asset)
-          (chibi finance currency))
+          (chibi finance currency)
+          (chibi log))
   (export compound-interest future-value fire-number years-to-fire
           financial-plan financial-plan? fplan-add!
           fplan-fold fplan-map fplan-for-each fplan-project
