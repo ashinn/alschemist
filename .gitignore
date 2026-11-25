@@ -40,3 +40,5 @@
 *.tar.gz
 *.tar.bz2
 
+# Temp files
+tmp/
