@@ -1,0 +1,13 @@
+(define-library (chibi games chess-bench)
+  (export main)
+  (import (scheme base) (scheme write) (scheme time) (chibi games chess))
+  (begin
+    (define (main args)
+      (let* ((game (make-chess-game))
+             (depth (or (and (pair? (cdr args)) (string->number (cadr args)))
+                        2))
+             (start (current-second))
+             (move (chess-choose-move game player-white depth))
+             (end (current-second)))
+        (write `(depth ,depth move: ,move seconds: ,(- end start)))
+        (newline)))))
