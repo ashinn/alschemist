@@ -1,0 +1,11 @@
+(define-library (chibi games secret-hitler-test)
+  (export run-tests)
+  (import (scheme base) (chibi games secret-hitler) (chibi test))
+  (begin
+    (define (run-tests)
+      (test-begin "secret-hitler")
+      (let ((game (make-game 5)))
+        (test 1 (game-count-role game 'hitler))
+        (test 1 (game-count-role game 'fascist))
+        (test 3 (game-count-role game 'liberal)))
+      (test-end))))
