@@ -14,5 +14,6 @@
           video audio overlay overlay-text scale crop color
           aevalsrc anull adelay
           ffmpeg-use-longest-stream ffmpeg-preset
-          media-file-info ffmpeg-arguments)
+          media-file-info ffmpeg-arguments
+          write-video play-video)
   (include "ffmpeg.scm"))

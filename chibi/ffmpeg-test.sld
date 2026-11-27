@@ -41,8 +41,8 @@
             (ffmpeg-arguments (clip (video (load-media "input-0.mkv")) 3/2))))
       (test-group "concat"
         (test '("-i" "input-0.mkv" "-i" "input-1.mkv" "-filter_complex"
-                "[0:v] trim=start=3:end=8 [v1]; [v1] setpts=PTS-STARTPTS [v2]; [0:a] atrim=start=3:end=8 [a3]; [a3] asetpts=PTS-STARTPTS [a4]; [1:v] trim=start=4:end=9 [v5]; [v5] setpts=PTS-STARTPTS [v6]; [1:a] atrim=start=4:end=9 [a7]; [a7] asetpts=PTS-STARTPTS [a8]; [v2][a4][v6][a8] concat=n=2:v=1:a=1 [v9][a10]"
-                "-map" "[v9]" "-map" "[a10]" "-shortest")
+                "[0:v] trim=start=3:end=8 [v1]; [v1] setpts=PTS-STARTPTS [v2]; [0:a] atrim=start=3:end=8 [a3]; [a3] asetpts=PTS-STARTPTS [a4]; [1:v] trim=start=4:end=9 [v5]; [v5] setpts=PTS-STARTPTS [v6]; [1:a] atrim=start=4:end=9 [a7]; [a7] asetpts=PTS-STARTPTS [a8]; [v2][a4][v6][a8] concat=n=2:v=1:a=1 [v10][a9]"
+                "-map" "[v10]" "-map" "[a9]" "-shortest")
             (ffmpeg-arguments
              (concat (load-media "input-0.mkv" 3 8)
                      (load-media "input-1.mkv" 4 9))))
@@ -55,8 +55,8 @@
               (overlay-text (color "green" 2) "world"))))
         (test "unused outputs go to a null sink"
             '("-i" "input-0.mkv" "-filter_complex"
-              "[0:v][0:a] concat=n=1:v=1:a=1 [v1][a2]; [a2] anullsink"
-              "-map" "[v1]" "-shortest")
+              "[0:v][0:a] concat=n=1:v=1:a=1 [v2][a1]; [a1] anullsink"
+              "-map" "[v2]" "-shortest")
           (ffmpeg-arguments (video (concat (load-media "input-0.mkv")))))
         (test-error (concat))
         (test-error (concat (load-media "input-0.mkv") (color 'red 2))))
@@ -71,8 +71,8 @@
                 "-map" "[v5]" "-shortest")
             (ffmpeg-arguments (apply concat (split (color 'red 2) 3))))
         (test '("-i" "input-0.mkv" "-filter_complex"
-                "[0:v] split=2 [sp1][sp2]; [0:a] asplit=2 [sp3][sp4]; [sp1][sp3][sp2][sp4] concat=n=2:v=1:a=1 [v5][a6]"
-                "-map" "[v5]" "-map" "[a6]" "-shortest")
+                "[0:v] split=2 [sp1][sp2]; [0:a] asplit=2 [sp3][sp4]; [sp1][sp3][sp2][sp4] concat=n=2:v=1:a=1 [v6][a5]"
+                "-map" "[v6]" "-map" "[a5]" "-shortest")
             (let ((v (load-media "input-0.mkv")))
               (ffmpeg-arguments (concat v v))))
         (test "a stream used both in the graph and as output"
@@ -138,8 +138,8 @@
            (overlay (load-media "input-0.mkv") (load-media "input-1.mkv") 0 0 1.5)))
         (test "audio-only foreground is mixed in"
             '("-i" "input-0.mkv" "-i" "input-1.mkv" "-filter_complex"
-              "[0:v] trim=start=3:end=8 [v1]; [v1] setpts=PTS-STARTPTS [v2]; [0:a] atrim=start=3:end=8 [a3]; [a3] asetpts=PTS-STARTPTS [a4]; [1:v] trim=start=4:end=9 [v5]; [v5] setpts=PTS-STARTPTS [v6]; [1:a] atrim=start=4:end=9 [a7]; [a7] asetpts=PTS-STARTPTS [a8]; [v2][a4][v6][a8] concat=n=2:v=1:a=1 [v9][a10]; aevalsrc=exprs=sin(440*2*PI*t):s=44100 [src11]; [a10][src11] amix=inputs=2:duration=first:dropout_transition=0 [a12]"
-              "-map" "[v9]" "-map" "[a12]" "-shortest")
+              "[0:v] trim=start=3:end=8 [v1]; [v1] setpts=PTS-STARTPTS [v2]; [0:a] atrim=start=3:end=8 [a3]; [a3] asetpts=PTS-STARTPTS [a4]; [1:v] trim=start=4:end=9 [v5]; [v5] setpts=PTS-STARTPTS [v6]; [1:a] atrim=start=4:end=9 [a7]; [a7] asetpts=PTS-STARTPTS [a8]; [v2][a4][v6][a8] concat=n=2:v=1:a=1 [v10][a9]; aevalsrc=exprs=sin(440*2*PI*t):s=44100 [src11]; [a9][src11] amix=inputs=2:duration=first:dropout_transition=0 [a12]"
+              "-map" "[v10]" "-map" "[a12]" "-shortest")
           (ffmpeg-arguments
            (overlay (concat (load-media "input-0.mkv" 3 8) (load-media "input-1.mkv" 4 9))
                     (aevalsrc 440))))

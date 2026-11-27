@@ -159,20 +159,25 @@
 ;; Clips media to the time range [start, end) in seconds, resetting
 ;; the timestamps to start at 0.
 (define-opt (clip media start (end #f))
-  (let ((args (string-append "start=" (arg->string start)
-                             (if end (string-append ":end=" (arg->string end)) ""))))
+  (let ((media (if (string? media) (load-media media) media))
+        (args (string-append
+               "start=" (arg->string start)
+               (if end (string-append ":end=" (arg->string end)) ""))))
     (map-audio
      (map-video media
                 (lambda (v)
-                  (filter-ref (filter-ref v "trim" args) "setpts" "PTS-STARTPTS")))
+                  (filter-ref (filter-ref v "trim" args)
+                              "setpts"
+                              "PTS-STARTPTS")))
      (lambda (a)
        (filter-ref (filter-ref a "atrim" args) "asetpts" "PTS-STARTPTS")))))
 
 (define (scale media width height)
   (map-video media
              (lambda (v)
-               (filter-ref v "scale" (string-append "w=" (arg->string width)
-                                                    ":h=" (arg->string height))))))
+               (filter-ref v "scale" (string-append
+                                      "w=" (arg->string width)
+                                      ":h=" (arg->string height))))))
 
 (define-opt (crop media width height (x 0) (y 0))
   (map-video media
@@ -183,21 +188,24 @@
                                                    ":y=" (arg->string y))))))
 
 ;; Draws the literal text (no % expansion) on the video.
-(define-opt (overlay-text media text (x 10) (y 10) (font-size 24) (font-color 'white))
-  (map-video media
-             (lambda (v)
-               (filter-ref v "drawtext"
-                           (string-append "text=" (escape-filter-arg text)
-                                          ":expansion=none"
-                                          ":x=" (arg->string x)
-                                          ":y=" (arg->string y)
-                                          ":fontsize=" (arg->string font-size)
-                                          ":fontcolor=" (arg->string font-color))))))
+(define-opt (overlay-text media text
+                          (x 10) (y 10) (font-size 24) (font-color 'white))
+  (map-video
+   media
+   (lambda (v)
+     (filter-ref v "drawtext"
+                 (string-append "text=" (escape-filter-arg text)
+                                ":expansion=none"
+                                ":x=" (arg->string x)
+                                ":y=" (arg->string y)
+                                ":fontsize=" (arg->string font-size)
+                                ":fontcolor=" (arg->string font-color))))))
 
 ;; A solid color video, infinite unless duration (in seconds) is given.
 (define-opt (color color (duration #f) (size "1280x720"))
-  (let* ((args (string-append "c=" (arg->string color) ":s=" (arg->string size)
-                              (if duration (string-append ":d=" (arg->string duration)) "")))
+  (let* ((args (string-append
+                "c=" (arg->string color) ":s=" (arg->string size)
+                (if duration (string-append ":d=" (arg->string duration)) "")))
          (node (make-source-node 'video "color" args)))
     (make-media (make-media-ref 'video node 0) #f)))
 
@@ -207,16 +215,18 @@
   (let* ((expr (if (number? expr)
                    (string-append "sin(" (arg->string expr) "*2*PI*t)")
                    expr))
-         (args (string-append "exprs=" (escape-filter-arg expr)
-                              ":s=" (arg->string sample-rate)
-                              (if duration (string-append ":d=" (arg->string duration)) "")))
+         (args (string-append
+                "exprs=" (escape-filter-arg expr)
+                ":s=" (arg->string sample-rate)
+                (if duration (string-append ":d=" (arg->string duration)) "")))
          (node (make-source-node 'audio "aevalsrc" args)))
     (make-media #f (make-media-ref 'audio node 0))))
 
 ;; Silent audio, infinite unless duration (in seconds) is given.
 (define-opt (anull (duration #f) (sample-rate 44100))
-  (let* ((args (string-append "r=" (arg->string sample-rate)
-                              (if duration (string-append ":d=" (arg->string duration)) "")))
+  (let* ((args (string-append
+                "r=" (arg->string sample-rate)
+                (if duration (string-append ":d=" (arg->string duration)) "")))
          (node (make-source-node 'audio "anullsrc" args)))
     (make-media #f (make-media-ref 'audio node 0))))
 
@@ -237,7 +247,8 @@
            (audio-count (if has-audio? 1 0))
            (inputs (append-map
                     (lambda (media)
-                      (filter values (list (media-video media) (media-audio media))))
+                      (filter values (list (media-video media)
+                                           (media-audio media))))
                     medias))
            (args (string-append "n=" (number->string (length medias))
                                 ":v=" (number->string video-count)
@@ -259,43 +270,45 @@
 ;; - If both have audio: mixes the audio, for the duration of bg.
 ;; - Otherwise uses whichever stream is present, preferring bg.
 (define-opt (overlay bg fg (x 0) (y 0) (start-time 0))
-  (let ((out-v (if (and (media-video bg) (media-video fg))
-                   (let ((fg-video
-                          (if (positive? start-time)
-                              (filter-ref (media-video fg) "setpts"
-                                          (string-append "PTS-STARTPTS+"
-                                                         (arg->string start-time)
-                                                         "/TB"))
-                              (media-video fg))))
-                     (make-media-ref
-                      'video
-                      (make-filter-node
-                       "overlay"
-                       (string-append "x=" (arg->string x)
-                                      ":y=" (arg->string y)
-                                      (if (positive? start-time)
-                                          (string-append ":enable='gte(t,"
-                                                         (arg->string start-time)
-                                                         ")'")
-                                          ""))
-                       (list (media-video bg) fg-video)
-                       1 0)
-                      0))
-                   (or (media-video bg) (media-video fg))))
-        (out-a (if (and (media-audio bg) (media-audio fg))
-                   (let ((fg-audio
-                          (if (positive? start-time)
-                              (media-audio (adelay (audio fg)
-                                                   (exact (round (* start-time 1000)))))
-                              (media-audio fg))))
-                     (make-media-ref
-                      'audio
-                      (make-filter-node "amix"
-                                        "inputs=2:duration=first:dropout_transition=0"
-                                        (list (media-audio bg) fg-audio)
-                                        0 1)
-                      0))
-                   (or (media-audio bg) (media-audio fg)))))
+  (let ((out-v
+         (if (and (media-video bg) (media-video fg))
+             (let ((fg-video
+                    (if (positive? start-time)
+                        (filter-ref (media-video fg) "setpts"
+                                    (string-append "PTS-STARTPTS+"
+                                                   (arg->string start-time)
+                                                   "/TB"))
+                        (media-video fg))))
+               (make-media-ref
+                'video
+                (make-filter-node
+                 "overlay"
+                 (string-append "x=" (arg->string x)
+                                ":y=" (arg->string y)
+                                (if (positive? start-time)
+                                    (string-append ":enable='gte(t,"
+                                                   (arg->string start-time)
+                                                   ")'")
+                                    ""))
+                 (list (media-video bg) fg-video)
+                 1 0)
+                0))
+             (or (media-video bg) (media-video fg))))
+        (out-a
+         (if (and (media-audio bg) (media-audio fg))
+             (let ((fg-audio
+                    (if (positive? start-time)
+                        (media-audio (adelay (audio fg)
+                                             (exact (round (* start-time 1000)))))
+                        (media-audio fg))))
+               (make-media-ref
+                'audio
+                (make-filter-node "amix"
+                                  "inputs=2:duration=first:dropout_transition=0"
+                                  (list (media-audio bg) fg-audio)
+                                  0 1)
+                0))
+             (or (media-audio bg) (media-audio fg)))))
     (make-media out-v out-a)))
 
 ;; Two refs denote the same stream if they name the same output pad
@@ -448,6 +461,23 @@
               ,@(if (member (ffmpeg-preset) ffmpeg-valid-presets)
                     (list "-preset" (ffmpeg-preset))
                     '())))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Entry points
+
+(define (write-video vid output-file)
+  (shell (,(media-encoder-path)
+          -y
+          ,@(ffmpeg-arguments vid)
+          ,output-file)))
+
+(define (play-video vid)
+  ;; First pass to ffmpeg to handle complex filters, and stream the
+  ;; output to ffplay.
+  (let ((args (ffmpeg-arguments vid)))
+    (log-debug `(,(media-encoder-path) ,@args -f matroska -))
+    (shell (,(media-encoder-path) ,@args -f matroska -)
+           (,(media-player-path) -))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inspecting videos
