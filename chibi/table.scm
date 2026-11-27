@@ -311,6 +311,33 @@
   (call-with-values (lambda () (table-resolve-index table 0 column))
     (lambda (array row col) (array-storage-class array))))
 
+(define (array-take-rows array num-rows)
+  (let ((num-cols (interval-width (array-domain array) 1)))
+    (array-extract array (make-interval (vector num-rows num-cols)))))
+
+(define (array-drop-rows array dropped-rows)
+  (let ((num-rows (interval-width (array-domain array) 0))
+        (num-cols (interval-width (array-domain array) 1)))
+    (array-to-origin
+     (array-extract array
+                    (make-interval (vector dropped-rows 0)
+                                   (vector num-rows num-cols))))))
+
+(define (table-split table ratio)
+  (let ((left-rows (exact (round (* ratio (table-num-rows table)))))
+         (num-cols (table-num-columns table)))
+    (values
+     (make-table (vector-map (lambda (ar) (array-take-rows ar left-rows))
+                             (table-arrays table))
+                 (table-type-specs table)
+                 (table-labels table)
+                 '#())
+     (make-table (vector-map (lambda (ar) (array-drop-rows ar left-rows))
+                             (table-arrays table))
+                 (table-type-specs table)
+                 (table-labels table)
+                 '#()))))
+
 ;;> Returns a single homogenous array containing the requested columns
 ;;> of the table, in order, using the most specific storage class
 ;;> possible.
@@ -459,6 +486,7 @@
                     (num-rows (- (call-with-input-file file
                                    (lambda (in) (csv-num-rows grammar in)))
                                  (if header-from-first-line? 1 0)))
+                    (fill-nan #f)
                     (labels
                      (call-with-input-file file
                        (lambda (in)
@@ -485,8 +513,11 @@
                          ((eq? generic-storage-class type)
                           (lambda (field) field))
                          ((inexact? (storage-class-default type))
-                          (lambda (field) (inexact (string->number field))))
-                         (else string->number)))
+                          (lambda (field)
+                            (cond ((string->number field) => inexact)
+                                  (else fill-nan))))
+                         (else
+                          (lambda (field) (or (string->number field) fill-nan)))))
                       types)))
     (let*-values (((arrays type-specs) (types->arrays types num-rows num-cols))
                   ((table) (make-table arrays type-specs labels '#())))

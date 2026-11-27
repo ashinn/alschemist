@@ -19,6 +19,6 @@
           table-column-map-to! table-column-map-to
           table-column-drop! table-column-drop
           table-consolidate! table-consolidate
-          table-load-csv
+          table-load-csv table-split
           infer-csv-grammar infer-csv-types)
   (include "table.scm"))
